@@ -186,22 +186,36 @@ export function renderCandlestickWithWalls(container, candles, {
   container.appendChild(svg);
 }
 
+let _heatmapGradientCounter = 0;
+
 /**
  * Strike x expiry "dealer positioning map" heatmap. Rows are strikes
  * (highest at top, like a depth-of-book ladder), columns are expiry
  * buckets (nearest-dated first), and each cell's fill encodes that
  * strike/expiry's net GEX - green for net-positive (call-dominated,
  * dealers theoretically long gamma there), red for net-negative
- * (put-dominated). This is the richer sibling of the by-strike and
- * by-expiry bar charts: those are just this same grid summed across one
- * axis. The strike nearest current spot gets a highlighted row so you can
- * see at a glance where price sits relative to the whole term structure.
+ * (put-dominated), with intensity scaled smoothly (not banded) by
+ * magnitude. This is the richer sibling of the by-strike and by-expiry bar
+ * charts: those are just this same grid summed across one axis.
+ *
+ * Three rows get called out with a colored outline + label, the same
+ * pattern used once per row (merged into one label if more than one lands
+ * on the same strike): the strike nearest current spot, and - when passed
+ * in, since these are whole-chain values that may fall outside a zoomed
+ * near-term view - the overall call wall and put wall strikes. A bottom
+ * legend strip shows the color scale so intensity reads as an actual
+ * number, not just "darker = more."
  */
-export function renderGexHeatmap(container, cells, spot, { valueFormatter = (v) => v, maxStrikeLabels = 22 } = {}) {
+export function renderGexHeatmap(container, cells, spot, {
+  valueFormatter = (v) => v, maxStrikeLabels = 22, callWall = null, putWall = null, showLegend = true,
+} = {}) {
   clear(container);
-  const width = 1000, height = 420;
+  const width = 1000;
+  const legendH = showLegend ? 46 : 0;
   const padL = 76, padR = 16, padT = 28, padB = 34;
-  const innerW = width - padL - padR, innerH = height - padT - padB;
+  const gridH = 420 - 28 - 34; // keep the grid itself the same size as before regardless of legend
+  const height = padT + gridH + padB + legendH;
+  const innerW = width - padL - padR, innerH = gridH;
 
   const svg = svgEl("svg", { viewBox: `0 0 ${width} ${height}`, width: "100%", height: "100%" });
 
@@ -224,8 +238,8 @@ export function renderGexHeatmap(container, cells, spot, { valueFormatter = (v) 
   const rowH = innerH / strikes.length;
 
   function colorFor(v) {
-    const t = Math.min(1, Math.abs(v) / maxAbs); // 0..1 intensity
-    const alpha = 0.12 + t * 0.8;
+    const t = Math.min(1, Math.abs(v) / maxAbs); // 0..1 intensity, continuous (not banded)
+    const alpha = 0.10 + t * 0.82;
     return v >= 0 ? `rgba(46, 207, 122, ${alpha.toFixed(3)})` : `rgba(239, 74, 95, ${alpha.toFixed(3)})`;
   }
 
@@ -251,27 +265,40 @@ export function renderGexHeatmap(container, cells, spot, { valueFormatter = (v) 
     });
   });
 
-  // spot-row highlight: a bracket down the left edge at the nearest strike
-  if (spotStrike !== null) {
-    const rowI = strikes.indexOf(spotStrike);
+  // Callouts: spot, call wall, put wall - each a colored outline across the
+  // full row plus a label. If two land on the same strike (e.g. spot sitting
+  // right at the put wall), merge into one outline/label instead of drawing
+  // twice on top of each other.
+  const callouts = new Map(); // strike -> { color, parts: [text, ...] }
+  function addCallout(strike, color, text) {
+    if (strike === null || strike === undefined || !strikes.includes(strike)) return;
+    const existing = callouts.get(strike);
+    if (existing) existing.parts.push(text);
+    else callouts.set(strike, { color, parts: [text] });
+  }
+  addCallout(callWall, "#2ecf7a", `call wall ${callWall != null ? callWall.toLocaleString() : ""}`);
+  addCallout(putWall, "#ef4a5f", `put wall ${putWall != null ? putWall.toLocaleString() : ""}`);
+  addCallout(spotStrike, "#7c8cff", `spot ${spotStrike != null ? spotStrike.toLocaleString() : ""}`);
+
+  callouts.forEach(({ color, parts }, strike) => {
+    const rowI = strikes.indexOf(strike);
     const y = padT + rowI * rowH;
     svg.appendChild(svgEl("rect", {
-      x: padL, y, width: innerW, height: rowH, fill: "none", stroke: "#7c8cff", "stroke-width": 1.6,
+      x: padL, y, width: innerW, height: rowH, fill: "none", stroke: color, "stroke-width": 1.6,
     }));
-    const tag = svgEl("text", { x: padL - 8, y: y + rowH / 2 + 4, fill: "#7c8cff", "font-size": 10, "font-weight": "600", "text-anchor": "end" });
-    tag.textContent = `spot → ${spotStrike.toLocaleString()}`;
+    const tag = svgEl("text", { x: padL - 8, y: y + rowH / 2 + 4, fill: color, "font-size": 10, "font-weight": "600", "text-anchor": "end" });
+    tag.textContent = parts.join(" & ") + " →";
     svg.appendChild(tag);
-  }
+  });
 
-  // row labels (strikes) - thin out if there are a lot of them. The spot
-  // row already gets its own "spot -> <strike>" label above, so skip it
-  // here to avoid drawing two overlapping labels on the same line.
+  // row labels (strikes) - thin out if there are a lot of them. Callout rows
+  // already carry their own label above, so skip those to avoid overlap.
   const rowStride = pickLabelStride(strikes.length, maxStrikeLabels);
   strikes.forEach((strike, rowI) => {
-    if (strike === spotStrike) return;
+    if (callouts.has(strike)) return;
     if (rowI % rowStride !== 0) return;
     const y = padT + rowI * rowH + rowH / 2 + 4;
-    const t = svgEl("text", { x: padL - 8, y, fill: strike === spotStrike ? "#7c8cff" : "#8791a8", "font-size": 10, "text-anchor": "end" });
+    const t = svgEl("text", { x: padL - 8, y, fill: "#8791a8", "font-size": 10, "text-anchor": "end" });
     t.textContent = strike.toLocaleString();
     svg.appendChild(t);
   });
@@ -284,7 +311,59 @@ export function renderGexHeatmap(container, cells, spot, { valueFormatter = (v) 
     svg.appendChild(t);
   });
 
+  // Color legend: a smooth put-heavy -> neutral -> call-heavy gradient bar,
+  // so a cell's intensity reads as an actual magnitude, not just "darker."
+  if (showLegend) {
+    _heatmapGradientCounter += 1;
+    const gradId = `gexHeatmapLegendGrad${_heatmapGradientCounter}`;
+    const defs = svgEl("defs");
+    const grad = svgEl("linearGradient", { id: gradId, x1: "0", x2: "1", y1: "0", y2: "0" });
+    [
+      [0, "rgba(239, 74, 95, 0.92)"],
+      [0.5, "rgba(120, 122, 130, 0.18)"],
+      [1, "rgba(46, 207, 122, 0.92)"],
+    ].forEach(([off, color]) => grad.appendChild(svgEl("stop", { offset: off, "stop-color": color })));
+    defs.appendChild(grad);
+    svg.appendChild(defs);
+
+    const legendY = padT + innerH + 30;
+    const legendW = 220;
+    const legendX = padL;
+    svg.appendChild(svgEl("rect", {
+      x: legendX, y: legendY, width: legendW, height: 8, rx: 4, fill: `url(#${gradId})`,
+    }));
+    const legendLabels = [
+      [legendX, "start", `−${valueFormatter(maxAbs)}`],
+      [legendX + legendW / 2, "middle", "0"],
+      [legendX + legendW, "end", `+${valueFormatter(maxAbs)}`],
+    ];
+    legendLabels.forEach(([x, anchor, text]) => {
+      const t = svgEl("text", { x, y: legendY + 20, fill: "#8791a8", "font-size": 10, "text-anchor": anchor });
+      t.textContent = text;
+      svg.appendChild(t);
+    });
+    const caption = svgEl("text", { x: legendX + legendW + 14, y: legendY + 7, fill: "#8791a8", "font-size": 10.5, "text-anchor": "start" });
+    caption.textContent = "net GEX — put-dominated ← → call-dominated";
+    svg.appendChild(caption);
+  }
+
   container.appendChild(svg);
+}
+
+/**
+ * Narrows a strike x expiry cell list to just the nearest `maxExpiries`
+ * expiry buckets and strikes within `strikeWindowPct` of spot - the "fast,
+ * live, near-term" companion view to the full multi-expiry map (Zerano's
+ * "Oracle" / Skylit's "Trinity" role: same underlying data, zoomed to what
+ * matters for the current session rather than the whole term structure).
+ */
+export function nearTermCells(cells, spot, { maxExpiries = 2, strikeWindowPct = 0.06 } = {}) {
+  if (!cells || cells.length === 0) return [];
+  const expiries = [...new Set(cells.map((c) => c.expiry_days))].sort((a, b) => a - b);
+  const keep = new Set(expiries.slice(0, maxExpiries));
+  if (spot == null) return cells.filter((c) => keep.has(c.expiry_days));
+  const lo = spot * (1 - strikeWindowPct), hi = spot * (1 + strikeWindowPct);
+  return cells.filter((c) => keep.has(c.expiry_days) && c.strike >= lo && c.strike <= hi);
 }
 
 /**
