@@ -87,12 +87,26 @@ async def _refresh_loop():
     while True:
         for symbol in config.UNDERLYINGS:
             try:
-                chain = await _provider.get_chain(symbol)
+                # A per-symbol wall-clock cap, independent of whatever
+                # timeout (if any) the provider itself configures. Found
+                # live: a large index chain (SPX) paginating through far
+                # more pages than expected - or a vendor next_url that never
+                # terminates - blocked every symbol after it in this list
+                # forever, with no exception ever raised to populate
+                # _errors, since each individual page request was
+                # completing "successfully" just very slowly (or endlessly).
+                # This turns that into a clear, visible per-symbol error
+                # after a bounded wait instead of an indefinite, silent
+                # stall that starves the other 7 symbols.
+                chain = await asyncio.wait_for(_provider.get_chain(symbol), timeout=config.SYMBOL_FETCH_TIMEOUT_SECONDS)
                 result = compute_gex(chain, config.RISK_FREE_RATE)
                 result["provider"] = config.DATA_PROVIDER
                 _latest[symbol] = result
                 _errors.pop(symbol, None)
                 _store.write(result)
+            except asyncio.TimeoutError:
+                log.error("Refreshing %s timed out after %ss", symbol, config.SYMBOL_FETCH_TIMEOUT_SECONDS)
+                _errors[symbol] = f"timed out after {config.SYMBOL_FETCH_TIMEOUT_SECONDS:.0f}s fetching/computing the chain"
             except Exception as exc:  # noqa: BLE001 - one bad symbol shouldn't kill the loop
                 log.exception("Failed to refresh %s", symbol)
                 _errors[symbol] = str(exc)
