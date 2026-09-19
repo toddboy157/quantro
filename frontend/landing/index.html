@@ -39,30 +39,83 @@
       <div class="preview-card">
         <div class="preview-top">
           <span>SPY · Dealer Positioning</span>
-          <span class="live-badge"><span class="dot"></span> LIVE</span>
+          <span class="live-badge js-live-badge">connecting…</span>
         </div>
         <div class="preview-grid">
-          <div class="pcard"><div class="l">Spot</div><div class="v">628.14</div></div>
-          <div class="pcard"><div class="l">Net GEX</div><div class="v neg">-$2.40B</div></div>
-          <div class="pcard"><div class="l">Call Wall</div><div class="v">635</div></div>
-          <div class="pcard"><div class="l">Put Wall</div><div class="v">625</div></div>
-          <div class="pcard"><div class="l">Zero Gamma</div><div class="v">630.6</div></div>
+          <div class="pcard"><div class="l">Spot</div><div class="v" id="hero-spot">—</div></div>
+          <div class="pcard"><div class="l">Net GEX</div><div class="v" id="hero-netgex">—</div></div>
+          <div class="pcard"><div class="l">Call Wall</div><div class="v" id="hero-callwall">—</div></div>
+          <div class="pcard"><div class="l">Put Wall</div><div class="v" id="hero-putwall">—</div></div>
+          <div class="pcard"><div class="l">Zero Gamma</div><div class="v" id="hero-zerogamma">—</div></div>
         </div>
-        <div class="preview-chart">
-          <svg viewBox="0 0 1000 160" width="100%" height="100%" preserveAspectRatio="none">
-            <line x1="0" y1="40" x2="1000" y2="40" stroke="#232838" stroke-width="1" />
-            <line x1="0" y1="80" x2="1000" y2="80" stroke="#232838" stroke-width="1" />
-            <line x1="0" y1="120" x2="1000" y2="120" stroke="#232838" stroke-width="1" />
-            <line x1="0" y1="52" x2="1000" y2="52" stroke="#2ecf7a" stroke-width="1.4" stroke-dasharray="6 4" />
-            <line x1="0" y1="104" x2="1000" y2="104" stroke="#ef4a5f" stroke-width="1.4" stroke-dasharray="6 4" />
-            <line x1="0" y1="78" x2="1000" y2="78" stroke="#7c8cff" stroke-width="1.4" stroke-dasharray="6 4" />
-            <path d="M 20 90 L 60 84 L 100 92 L 140 76 L 180 82 L 220 70 L 260 74 L 300 60 L 340 66 L 380 58 L 420 64 L 460 56 L 500 62 L 540 72 L 580 68 L 620 78 L 660 74 L 700 84 L 740 80 L 780 88 L 820 82 L 860 90 L 900 86 L 940 92 L 980 88"
-              fill="none" stroke="#5b8dff" stroke-width="2" />
-          </svg>
-        </div>
+        <div class="preview-chart chart-box js-pulse-heatmap"></div>
       </div>
     </div>
   </header>
+
+  <section id="pulse-terrain">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">Live, right now</div>
+        <h2>One session. Two live surfaces.</h2>
+        <p>The same feed, read two ways — what's mechanical right now, and the full structure it sits inside. Both are pulling real positioning for SPY as you read this, not a mockup.</p>
+      </div>
+      <div class="ptmap-grid">
+        <div class="ptmap-card">
+          <div class="ptmap-top">
+            <div>
+              <h3>Pulse</h3>
+              <p>The nearest two expiries, strikes close to spot — the exposure actually in play for this session.</p>
+            </div>
+            <span class="live-badge js-live-badge">connecting…</span>
+          </div>
+          <div class="chart-box chart-box-map js-pulse-heatmap"></div>
+        </div>
+        <div class="ptmap-card">
+          <div class="ptmap-top">
+            <div>
+              <h3>Terrain</h3>
+              <p>Every strike across the full expiry term structure — the shape of dealer exposure beyond just today.</p>
+            </div>
+            <span class="live-badge js-live-badge">connecting…</span>
+          </div>
+          <div class="chart-box chart-box-map js-terrain-heatmap"></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="session-screen">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">One screen</div>
+        <h2>A full session, not a stack of panels</h2>
+        <p>Call and put walls draw directly on the candles, not off in a separate box. Spot, the zero-gamma flip, and key strikes line up on the same time axis as the chart. Pulse and Terrain tick with whatever session you're looking at — live now, or a closed day pulled back up on request.</p>
+      </div>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="icon">▤</div>
+          <h3>Walls on the candles</h3>
+          <p>Call wall, put wall, and zero-gamma drawn directly on the price chart — where dealers have to buy and sell next, not a separate panel you have to cross-reference.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">≣</div>
+          <h3>Spot, flip &amp; key strikes on one axis</h3>
+          <p>The strike ladder and the price chart share the same time axis, so structure and price read as one picture instead of two.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">↺</div>
+          <h3>Replay a closed day</h3>
+          <p>Pull up history on request without ever blocking the live minute — see exactly how the walls held or broke on any past session.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">◐</div>
+          <h3>Pulse &amp; Terrain, same clock</h3>
+          <p>Both heatmaps tick with whatever you're looking at — the live session, or a day you've pulled back up in replay.</p>
+        </div>
+      </div>
+    </div>
+  </section>
 
   <section id="features">
     <div class="wrap">
@@ -80,7 +133,7 @@
         <div class="feature-card">
           <div class="icon">Σ</div>
           <h3>GEX &amp; DEX by strike and expiry</h3>
-          <p>Net gamma and delta exposure broken out across every strike and expiration in the chain, visualized as a full positioning map — not just the front month.</p>
+          <p>Net gamma and delta exposure broken out across every strike and expiration in the chain — this is the data Pulse and Terrain are built on, not just the front month.</p>
         </div>
         <div class="feature-card">
           <div class="icon">◎</div>
@@ -228,7 +281,9 @@
 
   <script type="module">
     import { renderAccountWidget } from "/auth-client.js";
+    import { initPulseWidgets } from "/pulse-widget.js";
     renderAccountWidget(document.getElementById("account-widget"));
+    initPulseWidgets();
   </script>
 </body>
 </html>
