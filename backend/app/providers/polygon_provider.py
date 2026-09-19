@@ -138,13 +138,33 @@ class PolygonOptionsProvider(OptionsDataProvider):
             resp = await self._client.get(url, params=params)
             resp.raise_for_status()
             payload = resp.json()
+            page_results = payload.get("results", [])
             if page_count == 1 or page_count % 10 == 0:
                 log.info(
                     "%s: fetched page %d (%d contracts so far, %.1fs elapsed)",
                     ticker, page_count, len(contracts), time.monotonic() - fetch_started,
                 )
 
-            for row in payload.get("results", []):
+            if not page_results:
+                # Found live: every tracked symbol was hitting MAX_CHAIN_PAGES
+                # above with the vendor still handing back a next_url on
+                # every single page, well past the point where real contracts
+                # stopped coming back (SPX/SPY/QQQ/AAPL/TSLA all plateaued
+                # around ~1200 contracts, MSFT ~295, NVDA ~647 - each
+                # consistent with that symbol's actual full chain size, just
+                # reached in the first few pages and then re-confirmed empty
+                # for the rest). Most plausible explanation: the Options
+                # Starter plan's entitlement boundary returns empty pages
+                # rather than ending pagination cleanly. Trusting an empty
+                # results page over a present next_url turns that into a
+                # normal, fast completion instead of a 100-page timeout.
+                log.info(
+                    "%s: page %d returned no results - treating chain as complete (%d contracts total)",
+                    ticker, page_count, len(contracts),
+                )
+                break
+
+            for row in page_results:
                 details = row.get("details", {})
                 greeks = row.get("greeks", {}) or {}
                 underlying_asset = row.get("underlying_asset", {}) or {}
