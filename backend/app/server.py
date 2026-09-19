@@ -236,8 +236,50 @@ async def get_candles(request):
         return denied
     limit = int(request.query_params.get("limit", 120))
     bucket_seconds = int(request.query_params.get("bucket_seconds", 60))
-    candles = _store.candles(symbol, bucket_seconds=bucket_seconds, limit=limit) if _store else []
-    return JSONResponse({"underlying": symbol, "bucket_seconds": bucket_seconds, "candles": candles})
+    day = request.query_params.get("day")  # Session screen replay mode - see storage.candles()
+    candles = _store.candles(symbol, bucket_seconds=bucket_seconds, limit=limit, day=day) if _store else []
+    return JSONResponse({"underlying": symbol, "bucket_seconds": bucket_seconds, "day": day, "candles": candles})
+
+
+# --------------------------------------------------------------------------
+# Session screen: closed-day replay (candles + ladder + Pulse/Terrain all
+# ticking together from one historical dataset, without ever touching or
+# blocking the live refresh loop above - see storage.py's session_days()/
+# session_replay() docstrings for how the data is shaped and downsampled).
+# --------------------------------------------------------------------------
+
+async def get_session_days(request):
+    symbol = request.path_params["symbol"].upper()
+    denied = _check_symbol_access(request, symbol)
+    if denied:
+        return denied
+    days = _store.session_days(symbol) if _store else []
+    # Today's date is deliberately excluded: it's still filling live, so
+    # "replay" only ever offers genuinely closed days - the live dashboard
+    # is always the right place to look at today.
+    today = time.strftime("%Y-%m-%d", time.gmtime())
+    days = [d for d in days if d != today]
+    return JSONResponse({"underlying": symbol, "days": days})
+
+
+async def get_session_replay(request):
+    symbol = request.path_params["symbol"].upper()
+    denied = _check_symbol_access(request, symbol)
+    if denied:
+        return denied
+    date_str = request.query_params.get("date", "")
+    if not date_str:
+        return JSONResponse({"error": "?date=YYYY-MM-DD is required"}, status_code=400)
+    if not _store:
+        return JSONResponse({"underlying": symbol, "date": date_str, "candles": [], "snapshots": []})
+    candles = _store.candles(symbol, bucket_seconds=60, day=date_str)
+    snapshots = _store.session_replay(symbol, date_str, max_points=180)
+    if not candles and not snapshots:
+        return JSONResponse(
+            {"error": f"No stored data for {symbol} on {date_str}."},
+            status_code=404,
+        )
+    return JSONResponse({"underlying": symbol, "date": date_str, "candles": candles, "snapshots": snapshots})
 
 
 async def health(request):
@@ -384,6 +426,8 @@ routes = [
     Route("/api/gex-all", get_gex_all),
     Route("/api/history/{symbol}", get_history),
     Route("/api/candles/{symbol}", get_candles),
+    Route("/api/session/{symbol}/days", get_session_days),
+    Route("/api/session/{symbol}/replay", get_session_replay),
     Route("/api/auth/me", auth_me),
     Route("/api/auth/signup", auth_signup, methods=["POST"]),
     Route("/api/auth/login", auth_login, methods=["POST"]),
