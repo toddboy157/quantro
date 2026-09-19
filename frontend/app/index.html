@@ -12,6 +12,7 @@
     <h1><span>·</span> Dealer Positioning <span class="badge" id="data-badge">…</span></h1>
     <nav class="app-nav">
       <a href="/app/" class="active">Dashboard</a>
+      <a href="/app/session/">Session</a>
       <a href="/app/compare/">Compare</a>
     </nav>
     <div class="controls">
@@ -37,8 +38,8 @@
     </div>
 
     <div class="panel panel-headline">
-      <h2>Live Session Map <span class="panel-tag">near-term</span></h2>
-      <p class="panel-sub">Zoomed to the nearest two expiries and strikes close to spot — the mechanical exposure in play for the current session, refreshed every tick. The full term structure is further down.</p>
+      <h2>Pulse <span class="panel-tag">near-term</span></h2>
+      <p class="panel-sub">Zoomed to the nearest two expiries and strikes close to spot — the mechanical exposure in play for the current session, refreshed every tick. The full term structure is further down in Terrain.</p>
       <div class="chart-box chart-box-livemap" id="chart-livemap"></div>
     </div>
 
@@ -48,7 +49,7 @@
     </div>
 
     <div class="panel">
-      <h2>Dealer Positioning Map — Strike × Expiry</h2>
+      <h2>Terrain <span class="panel-tag">strike × expiry</span></h2>
       <p class="panel-sub">Net GEX at every strike across the full expiry term structure. Green = call-dominated (net-positive), red = put-dominated (net-negative); outlined rows mark spot, the call wall, and the put wall. The color bar below the grid shows what the intensity means in dollar terms.</p>
       <div class="chart-box chart-box-map" id="chart-byexpiry"></div>
     </div>
