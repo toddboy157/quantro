@@ -1,283 +1,161 @@
-:root {
-  --bg: #0b0e14;
-  --panel: #12161f;
-  --panel-border: #232838;
-  --text: #e6e9f0;
-  --text-dim: #8791a8;
-  --green: #2ecf7a;
-  --red: #ef4a5f;
-  --accent: #5b8dff;
-  --amber: #f5b544;
-}
+"""
+Minimal time-series logging so the frontend can show a short history
+sparkline and so nothing computed is thrown away between ticks. This is
+intentionally simple (stdlib sqlite3) - the build-scope doc's recommended
+production store is TimescaleDB/InfluxDB once volume and query needs grow
+past what a single SQLite file handles comfortably. Swapping later means
+replacing this module; nothing else depends on SQLite specifically.
+"""
+from __future__ import annotations
 
-* { box-sizing: border-box; }
+import json
+import sqlite3
+import threading
+from pathlib import Path
+from typing import Dict, List
 
-body {
-  margin: 0;
-  background: var(--bg);
-  color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-}
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS snapshots (
+    underlying TEXT NOT NULL,
+    ts REAL NOT NULL,
+    spot REAL NOT NULL,
+    net_gex REAL NOT NULL,
+    call_wall REAL,
+    put_wall REAL,
+    zero_gamma REAL,
+    by_strike_json TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_snapshots_underlying_ts ON snapshots(underlying, ts);
+"""
 
-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 20px;
-  border-bottom: 1px solid var(--panel-border);
-  flex-wrap: wrap;
-  gap: 10px;
-}
 
-header h1 {
-  font-size: 18px;
-  margin: 0;
-  letter-spacing: 0.3px;
-}
+class SnapshotStore:
+    def __init__(self, db_path: str):
+        self._db_path = db_path
+        # DB_PATH commonly points at a mounted volume (e.g. /data/quantro.db
+        # in production - see DEPLOY.md). If that directory doesn't exist
+        # yet (a volume attached after this variable was set, or just a
+        # typo), sqlite3.connect() below fails loudly instead of silently
+        # writing next to the working directory - better to create the
+        # parent up front than crash-loop on every deploy.
+        parent = Path(db_path).parent
+        if str(parent) not in ("", "."):
+            parent.mkdir(parents=True, exist_ok=True)
+        self._lock = threading.Lock()
+        conn = self._connect()
+        conn.executescript(_SCHEMA)
+        conn.commit()
+        conn.close()
 
-header h1 span { color: var(--accent); }
+    def _connect(self) -> sqlite3.Connection:
+        return sqlite3.connect(self._db_path, check_same_thread=False)
 
-.brand-link {
-  color: var(--text);
-  text-decoration: none;
-  font-weight: 700;
-  font-size: 18px;
-  letter-spacing: 0.3px;
-  margin-right: 2px;
-}
-.brand-link:hover { color: var(--accent); }
+    def write(self, result: Dict) -> None:
+        """Called from the refresh loop after each recompute. Cheap enough
+        to call synchronously at a 1-2s cadence for this data volume."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                conn.execute(
+                    "INSERT INTO snapshots (underlying, ts, spot, net_gex, call_wall, put_wall, zero_gamma, by_strike_json) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                    (
+                        result["underlying"],
+                        result["timestamp"],
+                        result["spot"],
+                        result["net_gex"],
+                        result["call_wall"],
+                        result["put_wall"],
+                        result["zero_gamma"],
+                        json.dumps(result["by_strike"]),
+                    ),
+                )
+                conn.commit()
+            finally:
+                conn.close()
 
-header { row-gap: 6px; }
-header h1 { display: inline-flex; align-items: center; gap: 4px; }
+    def history(self, underlying: str, limit: int = 200) -> List[Dict]:
+        with self._lock:
+            conn = self._connect()
+            try:
+                rows = conn.execute(
+                    "SELECT ts, spot, net_gex, call_wall, put_wall, zero_gamma FROM snapshots "
+                    "WHERE underlying = ? ORDER BY ts DESC LIMIT ?",
+                    (underlying, limit),
+                ).fetchall()
+            finally:
+                conn.close()
+        rows.reverse()
+        return [
+            {
+                "timestamp": r[0],
+                "spot": r[1],
+                "net_gex": r[2],
+                "call_wall": r[3],
+                "put_wall": r[4],
+                "zero_gamma": r[5],
+            }
+            for r in rows
+        ]
 
-.app-nav {
-  display: flex;
-  align-items: center;
-  gap: 18px;
-  font-size: 13px;
-  margin-right: auto;
-  padding-left: 14px;
-}
-.app-nav a { color: var(--text-dim); text-decoration: none; }
-.app-nav a:hover { color: var(--text); }
-.app-nav a.active { color: var(--text); font-weight: 600; }
+    def candles(self, underlying: str, bucket_seconds: int = 60, limit: int = 200) -> List[Dict]:
+        """Bucket raw spot ticks into OHLC candles for the headline
+        candlestick+walls chart - the signature Zerano/Skylit visual.
 
-.wrap-note { padding: 0 20px; max-width: 1200px; margin: 0 auto; }
-.wrap-note:empty { display: none; }
+        There's no true intra-bucket high/low feed here (each tick is a
+        single spot sample, not a trade print), so a candle's high/low is
+        the max/min of the spot samples that landed in that time window and
+        its open/close are the first/last sample in the window. With the
+        mock provider's 2s tick cadence and a 60s bucket that's ~30 samples
+        per candle - plenty to produce a real-looking wick, not a degenerate
+        flat bar. The most recent (still-filling) bucket is included so the
+        chart's rightmost candle is "live" and updates in place tick to
+        tick, same as a real trading terminal.
 
-.badge {
-  display: inline-block;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 8px;
-  border-radius: 4px;
-  background: rgba(245, 181, 68, 0.15);
-  color: var(--amber);
-  border: 1px solid rgba(245, 181, 68, 0.4);
-  margin-left: 10px;
-  vertical-align: middle;
-}
+        call_wall/put_wall/zero_gamma for each candle are taken from that
+        bucket's last snapshot, so the overlay lines track the most current
+        wall levels known as of that candle.
+        """
+        # Pull more raw rows than `limit` candles could possibly need, since
+        # many raw ticks collapse into one candle.
+        raw_limit = max(limit * 120, 500)
+        with self._lock:
+            conn = self._connect()
+            try:
+                rows = conn.execute(
+                    "SELECT ts, spot, call_wall, put_wall, zero_gamma FROM snapshots "
+                    "WHERE underlying = ? ORDER BY ts DESC LIMIT ?",
+                    (underlying, raw_limit),
+                ).fetchall()
+            finally:
+                conn.close()
+        rows.reverse()  # oldest -> newest
 
-.badge.badge-live {
-  background: rgba(46, 207, 122, 0.15);
-  color: var(--green);
-  border: 1px solid rgba(46, 207, 122, 0.4);
-}
+        buckets: "Dict[int, Dict]" = {}
+        order: List[int] = []
+        for ts, spot, call_wall, put_wall, zero_gamma in rows:
+            bucket_key = int(ts // bucket_seconds) * bucket_seconds
+            b = buckets.get(bucket_key)
+            if b is None:
+                b = {
+                    "bucket_ts": bucket_key,
+                    "open": spot,
+                    "high": spot,
+                    "low": spot,
+                    "close": spot,
+                    "call_wall": call_wall,
+                    "put_wall": put_wall,
+                    "zero_gamma": zero_gamma,
+                }
+                buckets[bucket_key] = b
+                order.append(bucket_key)
+            else:
+                b["high"] = max(b["high"], spot)
+                b["low"] = min(b["low"], spot)
+                b["close"] = spot
+                b["call_wall"] = call_wall
+                b["put_wall"] = put_wall
+                b["zero_gamma"] = zero_gamma
 
-.controls {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-#account-widget {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-}
-#account-widget .account-link {
-  color: var(--text-dim);
-  text-decoration: none;
-  background: none;
-  border: none;
-  font: inherit;
-  cursor: pointer;
-  padding: 0;
-}
-#account-widget .account-link:hover { color: var(--text); }
-#account-widget .account-signup-btn {
-  padding: 6px 12px;
-  font-size: 12.5px;
-  border-radius: 6px;
-  border: 1px solid var(--panel-border);
-  color: var(--text);
-  text-decoration: none;
-}
-#account-widget .account-signup-btn:hover { border-color: var(--accent); color: var(--accent); }
-#account-widget .account-email { color: var(--text); font-weight: 600; }
-.plan-pill {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  padding: 2px 7px;
-  border-radius: 12px;
-  background: rgba(245, 181, 68, 0.15);
-  color: var(--amber);
-  border: 1px solid rgba(245, 181, 68, 0.35);
-}
-.plan-pill-live {
-  background: rgba(46, 207, 122, 0.15);
-  color: var(--green);
-  border: 1px solid rgba(46, 207, 122, 0.4);
-}
-
-.symbol-lock-note {
-  font-size: 12px;
-  color: var(--amber);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-.symbol-lock-note a { color: var(--amber); }
-
-select {
-  background: var(--panel);
-  color: var(--text);
-  border: 1px solid var(--panel-border);
-  border-radius: 6px;
-  padding: 7px 10px;
-  font-size: 14px;
-}
-
-#status {
-  font-size: 12px;
-  color: var(--text-dim);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-dim);
-}
-.dot.live { background: var(--green); box-shadow: 0 0 6px var(--green); }
-.dot.stale { background: var(--red); }
-
-main {
-  padding: 16px 20px 40px;
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-.summary-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 10px;
-  margin-bottom: 18px;
-}
-
-.card {
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-  border-radius: 10px;
-  padding: 12px 14px;
-}
-
-.card .label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-dim);
-  margin-bottom: 6px;
-}
-
-.card .value {
-  font-size: 20px;
-  font-weight: 600;
-  font-variant-numeric: tabular-nums;
-}
-
-.value.positive { color: var(--green); }
-.value.negative { color: var(--red); }
-
-.panel {
-  background: var(--panel);
-  border: 1px solid var(--panel-border);
-  border-radius: 10px;
-  padding: 16px;
-  margin-bottom: 18px;
-}
-
-.panel h2 {
-  font-size: 13px;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-dim);
-  margin: 0 0 12px 0;
-}
-
-.panel-tag {
-  display: inline-block;
-  margin-left: 8px;
-  padding: 2px 8px;
-  border-radius: 100px;
-  background: rgba(91, 141, 255, 0.14);
-  color: var(--accent);
-  font-size: 10px;
-  letter-spacing: 0.3px;
-  text-transform: none;
-  vertical-align: middle;
-}
-
-.panel-sub {
-  font-size: 12.5px;
-  color: var(--text-dim);
-  margin: -6px 0 12px 0;
-  max-width: 720px;
-}
-
-.chart-box { width: 100%; height: 280px; }
-.chart-box-short { height: 200px; }
-.chart-box-tall { height: 340px; }
-.chart-box-map { height: 460px; }
-.chart-box-livemap { height: 380px; }
-.chart-box svg text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-
-.panel-headline {
-  border-color: rgba(91, 141, 255, 0.35);
-  box-shadow: 0 0 0 1px rgba(91, 141, 255, 0.06);
-}
-
-.compare-table-wrap { overflow-x: auto; }
-table.compare-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13.5px;
-  min-width: 480px;
-}
-table.compare-table th, table.compare-table td {
-  padding: 12px 14px;
-  text-align: left;
-  border-bottom: 1px solid var(--panel-border);
-}
-table.compare-table th {
-  color: var(--text-dim);
-  font-weight: 600;
-  font-size: 11.5px;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-table.compare-table tr:last-child td { border-bottom: none; }
-
-footer {
-  text-align: center;
-  color: var(--text-dim);
-  font-size: 12px;
-  padding: 20px;
-}
+        recent_keys = order[-limit:]
+        return [buckets[k] for k in recent_keys]
