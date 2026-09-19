@@ -89,6 +89,7 @@ export function renderCandlestickWithWalls(container, candles, {
   priceFormatter = (v) => v.toFixed(2),
   timeFormatter = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
   maxLabels = 10,
+  playheadIndex = null,
 } = {}) {
   clear(container);
   const width = 1000, height = 340;
@@ -182,6 +183,19 @@ export function renderCandlestickWithWalls(container, candles, {
     t.textContent = timeFormatter(c.bucket_ts);
     svg.appendChild(t);
   });
+
+  // Playhead: a vertical marker at one specific candle - this is what keeps
+  // the Session screen's ladder and heatmaps visibly "on the same time
+  // axis" as this chart. In replay mode it tracks the scrub position; in
+  // live mode it's left null and simply isn't drawn (the rightmost candle
+  // IS the live position, no marker needed).
+  if (playheadIndex != null && playheadIndex >= 0 && playheadIndex < n) {
+    const cx = padL + playheadIndex * slot + slot / 2;
+    svg.appendChild(svgEl("line", {
+      x1: cx, x2: cx, y1: padT, y2: padT + innerH, stroke: "#e6e9f0", "stroke-width": 1.2, "stroke-dasharray": "3 3", opacity: 0.75,
+    }));
+    svg.appendChild(svgEl("circle", { cx, cy: padT + innerH, r: 3.5, fill: "#e6e9f0" }));
+  }
 
   container.appendChild(svg);
 }
