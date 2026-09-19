@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quantro — Session</title>
+  <link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+  <header>
+    <a class="brand-link" href="/" title="Back to Quantro home">Quantro</a>
+    <h1><span>·</span> Session <span class="badge" id="data-badge">…</span></h1>
+    <nav class="app-nav">
+      <a href="/app/">Dashboard</a>
+      <a href="/app/session/" class="active">Session</a>
+      <a href="/app/compare/">Compare</a>
+    </nav>
+    <div class="controls">
+      <span id="account-widget"></span>
+      <select id="symbol-select"></select>
+      <div class="mode-toggle" id="mode-toggle">
+        <button type="button" class="mode-btn active" data-mode="live">Live</button>
+        <button type="button" class="mode-btn" data-mode="replay">Replay</button>
+      </div>
+      <span id="status"><span class="dot" id="status-dot"></span><span id="status-text">connecting…</span></span>
+    </div>
+  </header>
+  <div class="wrap-note" id="lock-note-row"></div>
+
+  <div class="replay-bar" id="replay-bar" hidden>
+    <select id="replay-day-select"><option value="">No closed days yet</option></select>
+    <input type="range" id="replay-scrub" min="0" max="0" value="0" disabled />
+    <span class="replay-time-label" id="replay-time-label">—</span>
+  </div>
+
+  <main>
+    <div class="summary-grid">
+      <div class="card"><div class="label">Spot</div><div class="value" id="v-spot">—</div></div>
+      <div class="card"><div class="label">Net GEX</div><div class="value" id="v-netgex">—</div></div>
+      <div class="card"><div class="label">Call Wall</div><div class="value" id="v-callwall">—</div></div>
+      <div class="card"><div class="label">Put Wall</div><div class="value" id="v-putwall">—</div></div>
+      <div class="card"><div class="label">Zero Gamma</div><div class="value" id="v-zerogamma">—</div></div>
+    </div>
+
+    <div class="session-main-grid">
+      <div class="panel panel-headline session-chart-panel">
+        <h2>Price &amp; Dealer Walls</h2>
+        <p class="panel-sub">Call wall, put wall, and zero-gamma drawn straight on the candles. In Replay, the dashed marker below tracks the scrub position — the same moment the Ladder and heatmaps are showing.</p>
+        <div class="chart-box chart-box-tall" id="chart-candles"></div>
+      </div>
+      <div class="panel panel-headline session-ladder-panel">
+        <h2>Ladder</h2>
+        <p class="panel-sub">Spot, the zero-gamma flip, and the walls — one moment, sorted by price. Ticks with whatever the chart is showing.</p>
+        <div class="ladder" id="ladder"></div>
+      </div>
+    </div>
+
+    <div class="session-heatmap-grid">
+      <div class="panel panel-headline">
+        <h2>Pulse <span class="panel-tag">near-term</span></h2>
+        <div class="chart-box chart-box-livemap" id="chart-pulse"></div>
+      </div>
+      <div class="panel panel-headline">
+        <h2>Terrain <span class="panel-tag">strike × expiry</span></h2>
+        <div class="chart-box chart-box-livemap" id="chart-terrain"></div>
+      </div>
+    </div>
+  </main>
+
+  <footer id="footer-note">
+    Prototype build.
+  </footer>
+
+  <script type="module" src="session.js"></script>
+  <script type="module">
+    import { renderAccountWidget } from "/auth-client.js";
+    renderAccountWidget(document.getElementById("account-widget"));
+  </script>
+</body>
+</html>
