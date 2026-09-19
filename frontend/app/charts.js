@@ -203,31 +203,108 @@ export function renderCandlestickWithWalls(container, candles, {
 let _heatmapGradientCounter = 0;
 
 /**
- * Strike x expiry "dealer positioning map" heatmap. Rows are strikes
- * (highest at top, like a depth-of-book ladder), columns are expiry
- * buckets (nearest-dated first), and each cell's fill encodes that
- * strike/expiry's net GEX - green for net-positive (call-dominated,
- * dealers theoretically long gamma there), red for net-negative
- * (put-dominated), with intensity scaled smoothly (not banded) by
- * magnitude. This is the richer sibling of the by-strike and by-expiry bar
- * charts: those are just this same grid summed across one axis.
+ * Collapses adjacent strikes into a fixed number of price bands, summing
+ * net_gex within each band. Found live (Round 10, comparing this against
+ * Zerano's screenshots): SPY's real chain lists strikes in $1 increments
+ * near the money - 100+ distinct rows for a single expiry - which, crammed
+ * into one fixed-height box, gives each row only 1-2 pixels of height. The
+ * per-row color IS varying correctly by then (confirmed against the real
+ * captured numbers), it's just too thin a strip to perceive as texture, so
+ * the whole grid still reads as flat, blocky bands even after the color-
+ * scale fix. Zerano's own screenshots show roughly 20-40 rows per panel,
+ * not 100+. Grouping every N *adjacent* strikes (by sort order, not by
+ * fixed dollar width) into one row keeps the dense near-the-money area
+ * meaningfully thick while leaving the already-sparse far-OTM strikes close
+ * to 1:1, and strengthens the real signal instead of hiding it (ten
+ * strikes each worth $2-5M sum into one $30M row, which is far easier to
+ * see against a $537M peak than any one of them alone was).
+ */
+function _bucketCellsByStrike(cells, maxRows) {
+  const strikesAsc = [...new Set(cells.map((c) => c.strike))].sort((a, b) => a - b);
+  if (strikesAsc.length <= maxRows) return cells;
+
+  const bucketSize = Math.ceil(strikesAsc.length / maxRows);
+  const strikeToBand = new Map(); // strike -> { rep, lo, hi }
+  for (let i = 0; i < strikesAsc.length; i += bucketSize) {
+    const group = strikesAsc.slice(i, i + bucketSize);
+    const band = { rep: (group[0] + group[group.length - 1]) / 2, lo: group[0], hi: group[group.length - 1] };
+    group.forEach((s) => strikeToBand.set(s, band));
+  }
+
+  const agg = new Map(); // "expiry|rep" -> { expiry_days, strike, net_gex, lo, hi }
+  cells.forEach((c) => {
+    const band = strikeToBand.get(c.strike);
+    const key = `${c.expiry_days}|${band.rep}`;
+    const existing = agg.get(key);
+    if (existing) existing.net_gex += c.net_gex;
+    else agg.set(key, { expiry_days: c.expiry_days, strike: band.rep, net_gex: c.net_gex, lo: band.lo, hi: band.hi });
+  });
+  return [...agg.values()];
+}
+
+/**
+ * Interpolates the standard "viridis" perceptual colormap (dark purple ->
+ * blue -> teal -> green -> yellow) at t in [0, 1]. Chosen to match the
+ * dense, terminal-style heatmaps on zerano.club/skylit.ai, which use a
+ * sequential palette with printed per-cell values rather than a simple
+ * red/green diverging wash.
+ */
+function _viridisRGB(t) {
+  const stops = [
+    [0.00, 68, 1, 84],
+    [0.25, 59, 82, 139],
+    [0.50, 33, 145, 140],
+    [0.75, 94, 201, 98],
+    [1.00, 253, 231, 37],
+  ];
+  const tt = Math.min(1, Math.max(0, t));
+  for (let i = 0; i < stops.length - 1; i++) {
+    const [t0, r0, g0, b0] = stops[i];
+    const [t1, r1, g1, b1] = stops[i + 1];
+    if (tt >= t0 && tt <= t1) {
+      const f = (tt - t0) / (t1 - t0 || 1);
+      return [Math.round(r0 + (r1 - r0) * f), Math.round(g0 + (g1 - g0) * f), Math.round(b0 + (b1 - b0) * f)];
+    }
+  }
+  const last = stops[stops.length - 1];
+  return [last[1], last[2], last[3]];
+}
+
+/**
+ * Strike x expiry "dealer positioning map" heatmap, styled to match the
+ * dense terminal look on zerano.club/skylit.ai rather than a soft abstract
+ * gradient: a viridis (purple -> blue -> teal -> green -> yellow) palette,
+ * a visible grid of bordered cells, the actual formatted value printed in
+ * each cell, and a bright highlight on each column's single most extreme
+ * strike - the same "one number jumps out per column" pattern in Zerano's
+ * own screenshots. Rows are strikes (highest at top, like a depth-of-book
+ * ladder), columns are expiry buckets (nearest-dated first).
  *
- * Three rows get called out with a colored outline + label, the same
- * pattern used once per row (merged into one label if more than one lands
- * on the same strike): the strike nearest current spot, and - when passed
- * in, since these are whole-chain values that may fall outside a zoomed
- * near-term view - the overall call wall and put wall strikes. A bottom
- * legend strip shows the color scale so intensity reads as an actual
- * number, not just "darker = more."
+ * Color is assigned by PERCENTILE RANK of each cell's raw net_gex among all
+ * currently-visible cells, not by its raw fraction of the largest value.
+ * Found live (Round 9/10): a straight magnitude scale lets one dominant
+ * strike (e.g. a real $537M call wall) wash out every other cell - even
+ * $1-50M ones - down to a nearly uniform faint tint, because they're all a
+ * tiny fraction of that one outlier. Ranking instead of scaling guarantees
+ * the full purple-to-yellow spectrum gets used across whatever cells are
+ * actually on screen, however skewed the underlying dollar values are -
+ * which is much closer to how Zerano's own grid stays colorful cell to
+ * cell instead of being dominated by one strike.
+ *
+ * Three rows also get called out with a colored outline + label (merged
+ * into one label if more than one lands on the same strike): the strike
+ * nearest current spot, and - when passed in, since these are whole-chain
+ * values that may fall outside a zoomed near-term view - the overall call
+ * wall and put wall strikes.
  */
 export function renderGexHeatmap(container, cells, spot, {
-  valueFormatter = (v) => v, maxStrikeLabels = 22, callWall = null, putWall = null, showLegend = true,
+  valueFormatter = (v) => v, maxStrikeLabels = 22, maxRows = 26, callWall = null, putWall = null, showLegend = true,
 } = {}) {
   clear(container);
   const width = 1000;
   const legendH = showLegend ? 46 : 0;
   const padL = 76, padR = 16, padT = 28, padB = 34;
-  const gridH = 420 - 28 - 34; // keep the grid itself the same size as before regardless of legend
+  const gridH = 460 - 28 - 34; // taller than the old 420 so bucketed rows are thick enough to hold printed values
   const height = padT + gridH + padB + legendH;
   const innerW = width - padL - padR, innerH = gridH;
 
@@ -241,65 +318,127 @@ export function renderGexHeatmap(container, cells, spot, {
     return;
   }
 
+  cells = _bucketCellsByStrike(cells, maxRows);
+  const bandByStrike = new Map(cells.map((c) => [c.strike, { lo: c.lo, hi: c.hi }]));
+
   const expiries = [...new Set(cells.map((c) => c.expiry_days))].sort((a, b) => a - b);
   // Highest strike at top of the grid (row 0), matching how a price ladder reads.
   const strikes = [...new Set(cells.map((c) => c.strike))].sort((a, b) => b - a);
 
   const cellByKey = new Map(cells.map((c) => [`${c.expiry_days}|${c.strike}`, c.net_gex]));
-  const maxAbs = Math.max(1e-9, ...cells.map((c) => Math.abs(c.net_gex)));
 
   const colW = innerW / expiries.length;
   const rowH = innerH / strikes.length;
 
+  // Percentile rank (0..1) of a value among every currently-visible cell -
+  // see the function doc above for why rank beats a fixed magnitude scale.
+  const sortedVals = cells.map((c) => c.net_gex).slice().sort((a, b) => a - b);
+  const n = sortedVals.length;
+  function percentileRank(v) {
+    if (n <= 1) return 0.5;
+    let lo = 0, hi = n;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (sortedVals[mid] < v) lo = mid + 1; else hi = mid;
+    }
+    return lo / (n - 1);
+  }
   function colorFor(v) {
-    const tLinear = Math.min(1, Math.abs(v) / maxAbs); // 0..1, true fraction of the largest cell
-    // Real dealer books tend to have one or two strikes (the call/put wall
-    // itself) with net GEX an order of magnitude past everything else -
-    // found live (Round 9) comparing this against real SPY data, where a
-    // single strike's ~$537M washed out a whole grid of otherwise-real
-    // $1-50M cells down to a nearly uniform, textureless wash under a
-    // straight linear scale (everything but the peak landed under ~10%
-    // intensity). A mild power curve (t^0.45) keeps the true peak at full
-    // intensity while pulling the rest of the distribution up into a
-    // visibly differentiated range, closer to how Zerano/Skylit's heatmaps
-    // read - texture across the whole grid, not just one bright cell.
-    const t = Math.pow(tLinear, 0.45);
-    const alpha = 0.10 + t * 0.82;
-    return v >= 0 ? `rgba(46, 207, 122, ${alpha.toFixed(3)})` : `rgba(239, 74, 95, ${alpha.toFixed(3)})`;
+    const [r, g, b] = _viridisRGB(percentileRank(v));
+    return `rgb(${r}, ${g}, ${b})`;
+  }
+  // White text on the dark purple/blue end of the scale, near-black text on
+  // the light green/yellow end, so the printed value stays readable across
+  // the whole palette instead of just picking one fixed text color.
+  function textColorFor(v) {
+    const [r, g, b] = _viridisRGB(percentileRank(v));
+    const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return luminance > 0.58 ? "#0b0e14" : "#eef1f5";
   }
 
-  // Nearest strike to spot, for the highlighted row.
+  // Human-readable row label: a single strike shows as-is, a bucketed band
+  // shows as its price range so it's clear the row represents more than one
+  // real strike.
+  function strikeLabel(strike) {
+    const band = bandByStrike.get(strike);
+    if (band && band.lo !== band.hi) return `${band.lo.toLocaleString()}-${band.hi.toLocaleString()}`;
+    return strike.toLocaleString();
+  }
+
+  // Nearest strike (or bucketed band) to spot, for the highlighted row.
   let spotStrike = null;
   if (spot != null && strikes.length > 0) {
     spotStrike = strikes.reduce((best, s) => (Math.abs(s - spot) < Math.abs(best - spot) ? s : best));
   }
 
-  // cells
+  // Each column's single most extreme cell (by |value|) gets a bright
+  // yellow highlight box, independent of its viridis color - matching the
+  // "one number jumps out" pattern in Zerano's own screenshots, where each
+  // ticker/column has its own standout strike flagged rather than only the
+  // strikes that happen to land at the top of the color scale.
+  const peakKeyByExpiry = new Map();
+  expiries.forEach((expiry) => {
+    let bestKey = null, bestAbs = -1;
+    strikes.forEach((strike) => {
+      const v = cellByKey.get(`${expiry}|${strike}`);
+      if (v != null && Math.abs(v) > bestAbs) { bestAbs = Math.abs(v); bestKey = `${expiry}|${strike}`; }
+    });
+    // Skip the highlight entirely for a column with no real signal yet (e.g.
+    // a next-day expiration with no OI published overnight) - a $0 cell
+    // "winning" by default and getting flagged as the biggest mover would
+    // be actively misleading rather than helpful.
+    if (bestKey && bestAbs > 0) peakKeyByExpiry.set(expiry, bestKey);
+  });
+
+  // cells - solid viridis fill, a visible dark grid border (the "bordered
+  // spreadsheet" look, not a smooth blurred wash), and the actual formatted
+  // value printed in monospace when the cell has room for it.
   strikes.forEach((strike, rowI) => {
     expiries.forEach((expiry, colI) => {
-      const v = cellByKey.get(`${expiry}|${strike}`) ?? 0;
+      const key = `${expiry}|${strike}`;
+      const v = cellByKey.get(key) ?? 0;
       const x = padL + colI * colW, y = padT + rowI * rowH;
+      const isPeak = peakKeyByExpiry.get(expiry) === key;
       const rect = svgEl("rect", {
         x: x + 0.5, y: y + 0.5, width: Math.max(0, colW - 1), height: Math.max(0, rowH - 1),
         fill: colorFor(v),
+        stroke: isPeak ? "#fde725" : "rgba(11, 14, 20, 0.85)",
+        "stroke-width": isPeak ? 2 : 1,
       });
       const title = svgEl("title");
-      title.textContent = `${strike.toLocaleString()} strike · ${Math.round(expiry)}d out: ${valueFormatter(v)}`;
+      title.textContent = `${strikeLabel(strike)} strike · ${Math.round(expiry)}d out: ${valueFormatter(v)}`;
       rect.appendChild(title);
       svg.appendChild(rect);
+
+      if (rowH >= 11 && colW >= 46) {
+        const label = svgEl("text", {
+          x: x + colW / 2, y: y + rowH / 2 + 3.5,
+          fill: isPeak ? "#0b0e14" : textColorFor(v),
+          "font-family": "'IBM Plex Mono', ui-monospace, Menlo, Consolas, monospace",
+          "font-size": Math.min(10.5, rowH * 0.62),
+          "font-weight": isPeak ? "700" : "500",
+          "text-anchor": "middle",
+        });
+        label.textContent = valueFormatter(v);
+        label.style.pointerEvents = "none";
+        svg.appendChild(label);
+      }
     });
   });
 
   // Callouts: spot, call wall, put wall - each a colored outline across the
   // full row plus a label. If two land on the same strike (e.g. spot sitting
   // right at the put wall), merge into one outline/label instead of drawing
-  // twice on top of each other.
+  // twice on top of each other. Matches to the NEAREST row rather than
+  // requiring an exact strike match, since a bucketed row's "strike" is a
+  // band midpoint that a real wall/spot value will rarely land on exactly.
   const callouts = new Map(); // strike -> { color, parts: [text, ...] }
   function addCallout(strike, color, text) {
-    if (strike === null || strike === undefined || !strikes.includes(strike)) return;
-    const existing = callouts.get(strike);
+    if (strike === null || strike === undefined || strikes.length === 0) return;
+    const nearest = strikes.reduce((best, s) => (Math.abs(s - strike) < Math.abs(best - strike) ? s : best));
+    const existing = callouts.get(nearest);
     if (existing) existing.parts.push(text);
-    else callouts.set(strike, { color, parts: [text] });
+    else callouts.set(nearest, { color, parts: [text] });
   }
   addCallout(callWall, "#2ecf7a", `call wall ${callWall != null ? callWall.toLocaleString() : ""}`);
   addCallout(putWall, "#ef4a5f", `put wall ${putWall != null ? putWall.toLocaleString() : ""}`);
@@ -324,30 +463,38 @@ export function renderGexHeatmap(container, cells, spot, {
     if (rowI % rowStride !== 0) return;
     const y = padT + rowI * rowH + rowH / 2 + 4;
     const t = svgEl("text", { x: padL - 8, y, fill: "#8791a8", "font-size": 10, "text-anchor": "end" });
-    t.textContent = strike.toLocaleString();
+    t.textContent = strikeLabel(strike);
     svg.appendChild(t);
   });
 
-  // column labels (expiries), all shown - there are usually only a handful
+  // column labels (expiries), all shown - there are usually only a handful.
+  // Drawn on a small chip background, closer to the ticker-badge headers on
+  // Zerano's own columns than a bare text label floating in space.
   expiries.forEach((expiry, colI) => {
     const x = padL + colI * colW + colW / 2;
-    const t = svgEl("text", { x, y: padT - 10, fill: "#8791a8", "font-size": 10, "text-anchor": "middle" });
-    t.textContent = expiry < 1 ? "0DTE" : `${Math.round(expiry)}d`;
+    const label = expiry < 1 ? "0DTE" : `${Math.round(expiry)}d`;
+    const chipW = Math.max(34, label.length * 7 + 14);
+    svg.appendChild(svgEl("rect", {
+      x: x - chipW / 2, y: padT - 22, width: chipW, height: 16, rx: 4, fill: "#1c2130",
+    }));
+    const t = svgEl("text", { x, y: padT - 10, fill: "#c7cede", "font-size": 10, "font-weight": "600", "text-anchor": "middle" });
+    t.textContent = label;
     svg.appendChild(t);
   });
 
-  // Color legend: a smooth put-heavy -> neutral -> call-heavy gradient bar,
-  // so a cell's intensity reads as an actual magnitude, not just "darker."
+  // Color legend: the viridis ramp itself, labeled by the actual min/median/
+  // max values it spans - since color now encodes percentile rank rather
+  // than a fixed dollar scale, the legend explains it as a rank, with the
+  // real dollar values it currently corresponds to alongside.
   if (showLegend) {
     _heatmapGradientCounter += 1;
     const gradId = `gexHeatmapLegendGrad${_heatmapGradientCounter}`;
     const defs = svgEl("defs");
     const grad = svgEl("linearGradient", { id: gradId, x1: "0", x2: "1", y1: "0", y2: "0" });
-    [
-      [0, "rgba(239, 74, 95, 0.92)"],
-      [0.5, "rgba(120, 122, 130, 0.18)"],
-      [1, "rgba(46, 207, 122, 0.92)"],
-    ].forEach(([off, color]) => grad.appendChild(svgEl("stop", { offset: off, "stop-color": color })));
+    [0, 0.25, 0.5, 0.75, 1].forEach((t) => {
+      const [r, g, b] = _viridisRGB(t);
+      grad.appendChild(svgEl("stop", { offset: t, "stop-color": `rgb(${r}, ${g}, ${b})` }));
+    });
     defs.appendChild(grad);
     svg.appendChild(defs);
 
@@ -358,9 +505,9 @@ export function renderGexHeatmap(container, cells, spot, {
       x: legendX, y: legendY, width: legendW, height: 8, rx: 4, fill: `url(#${gradId})`,
     }));
     const legendLabels = [
-      [legendX, "start", `−${valueFormatter(maxAbs)}`],
-      [legendX + legendW / 2, "middle", "0"],
-      [legendX + legendW, "end", `+${valueFormatter(maxAbs)}`],
+      [legendX, "start", valueFormatter(sortedVals[0])],
+      [legendX + legendW / 2, "middle", valueFormatter(sortedVals[Math.floor((n - 1) / 2)])],
+      [legendX + legendW, "end", valueFormatter(sortedVals[n - 1])],
     ];
     legendLabels.forEach(([x, anchor, text]) => {
       const t = svgEl("text", { x, y: legendY + 20, fill: "#8791a8", "font-size": 10, "text-anchor": anchor });
@@ -368,7 +515,7 @@ export function renderGexHeatmap(container, cells, spot, {
       svg.appendChild(t);
     });
     const caption = svgEl("text", { x: legendX + legendW + 14, y: legendY + 7, fill: "#8791a8", "font-size": 10.5, "text-anchor": "start" });
-    caption.textContent = "net GEX — put-dominated ← → call-dominated";
+    caption.textContent = "net GEX by percentile rank — most negative ← → most positive · ⬛ yellow border = column's biggest mover";
     svg.appendChild(caption);
   }
 
