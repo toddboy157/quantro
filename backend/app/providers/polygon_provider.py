@@ -127,13 +127,33 @@ class PolygonOptionsProvider(OptionsDataProvider):
         page_count = 0
         fetch_started = time.monotonic()
 
+        # Belt-and-braces alongside the empty-results-page check below: if a
+        # page comes back non-empty (payload["results"] has rows) but every
+        # single row in it gets skipped by the "incomplete row" continue
+        # below (missing strike/expiry/type/iv), that page contributed zero
+        # real contracts even though it wasn't literally an empty list. Found
+        # live (round 2): trusting only a truly-empty results page still hit
+        # the MAX_CHAIN_PAGES cap on every symbol, with contract counts
+        # plateauing exactly at each symbol's real chain size (SPX/SPY/QQQ/
+        # AAPL/TSLA ~1200, NVDA 647, MSFT 295, AMZN 385) on both the first
+        # and second test - identical counts across separate runs rules out
+        # duplicate/looping real data (that would keep growing the count) and
+        # points at the vendor padding out pages past the entitlement
+        # boundary with rows that are missing the fields this connector
+        # needs, rather than ever sending back an empty list or a null
+        # next_url. Treating N consecutive zero-yield pages as "chain
+        # complete" catches that case too.
+        ZERO_YIELD_PAGE_LIMIT = 3
+        zero_yield_pages_in_a_row = 0
+        logged_skip_sample = False
+
         while url:
             page_count += 1
             if page_count > MAX_CHAIN_PAGES:
                 raise RuntimeError(
                     f"{ticker}: stopped after {MAX_CHAIN_PAGES} pages ({len(contracts)} contracts so far) "
-                    "without running out of next_url - treating this as a pagination bug/runaway "
-                    "response rather than looping forever."
+                    "without running out of next_url or hitting the zero-yield-page limit - "
+                    "treating this as a pagination bug/runaway response rather than looping forever."
                 )
             resp = await self._client.get(url, params=params)
             resp.raise_for_status()
@@ -146,24 +166,18 @@ class PolygonOptionsProvider(OptionsDataProvider):
                 )
 
             if not page_results:
-                # Found live: every tracked symbol was hitting MAX_CHAIN_PAGES
-                # above with the vendor still handing back a next_url on
-                # every single page, well past the point where real contracts
-                # stopped coming back (SPX/SPY/QQQ/AAPL/TSLA all plateaued
-                # around ~1200 contracts, MSFT ~295, NVDA ~647 - each
-                # consistent with that symbol's actual full chain size, just
-                # reached in the first few pages and then re-confirmed empty
-                # for the rest). Most plausible explanation: the Options
-                # Starter plan's entitlement boundary returns empty pages
-                # rather than ending pagination cleanly. Trusting an empty
-                # results page over a present next_url turns that into a
-                # normal, fast completion instead of a 100-page timeout.
+                # Some symbols/plans may still legitimately signal "done" this
+                # way even though round 2's testing showed it isn't the only
+                # (or even the common) signal in practice - kept as the
+                # cheapest possible check before falling through to the
+                # zero-yield counting below.
                 log.info(
                     "%s: page %d returned no results - treating chain as complete (%d contracts total)",
                     ticker, page_count, len(contracts),
                 )
                 break
 
+            contracts_added_this_page = 0
             for row in page_results:
                 details = row.get("details", {})
                 greeks = row.get("greeks", {}) or {}
@@ -196,6 +210,20 @@ class PolygonOptionsProvider(OptionsDataProvider):
                     parity_pairs.setdefault(key_, {})[contract_type] = (float(close_px), delta)
 
                 if strike is None or expiry_date is None or contract_type is None or iv is None:
+                    if not logged_skip_sample:
+                        # Logged once per get_chain() call (not once per row)
+                        # so this doesn't flood the logs, but it's enough to
+                        # see, the next time this fires live, exactly which
+                        # field(s) the vendor is omitting on these padding
+                        # pages - confirms or corrects the entitlement-boundary
+                        # theory above instead of leaving it a guess.
+                        log.info(
+                            "%s: skipping incomplete row on page %d (strike=%r expiry=%r "
+                            "type=%r iv=%r) - keys present: %s",
+                            ticker, page_count, strike, expiry_date, contract_type, iv,
+                            sorted(row.keys()),
+                        )
+                        logged_skip_sample = True
                     continue  # skip incomplete rows rather than crash the whole tick
 
                 expiry_days = _days_to_expiry(expiry_date, now)
@@ -209,6 +237,7 @@ class PolygonOptionsProvider(OptionsDataProvider):
                         implied_vol=float(iv),
                     )
                 )
+                contracts_added_this_page += 1
                 # Vendor gamma (greeks.get("gamma")) is available here if you'd
                 # rather trust Polygon/Massive's own Greeks instead of
                 # recomputing via app.greeks - see gex_engine.compute_gex for
@@ -216,6 +245,18 @@ class PolygonOptionsProvider(OptionsDataProvider):
                 # the zero-gamma scenario re-pricing (which needs gamma at
                 # hypothetical spot levels the vendor never quoted) consistent
                 # with the main calc.
+
+            if contracts_added_this_page == 0:
+                zero_yield_pages_in_a_row += 1
+                if zero_yield_pages_in_a_row >= ZERO_YIELD_PAGE_LIMIT:
+                    log.info(
+                        "%s: %d consecutive pages returned data but zero usable contracts - "
+                        "treating chain as complete past this entitlement boundary (%d contracts total)",
+                        ticker, zero_yield_pages_in_a_row, len(contracts),
+                    )
+                    break
+            else:
+                zero_yield_pages_in_a_row = 0
 
             next_url = payload.get("next_url")
             if next_url:
