@@ -105,7 +105,7 @@ class PolygonOptionsProvider(OptionsDataProvider):
         await self._client.aclose()
 
     async def get_chain(self, underlying: str) -> ChainSnapshot:
-        from datetime import datetime, timezone
+        from datetime import datetime, timedelta, timezone
 
         ticker = _to_polygon_ticker(underlying)
         contracts: List[ContractSnapshot] = []
@@ -123,9 +123,63 @@ class PolygonOptionsProvider(OptionsDataProvider):
         parity_pairs: Dict[Tuple[float, str], Dict[str, Tuple[float, float]]] = {}
 
         url = f"/v3/snapshot/options/{ticker}"
-        params = {"apiKey": self._api_key, "limit": 250}
+        params: Dict[str, object] = {"apiKey": self._api_key, "limit": 250}
         page_count = 0
         fetch_started = time.monotonic()
+
+        # Found live (Round 9, comparing against real data): an unfiltered
+        # request on this plan's entitlement budget (~1200 contracts, see the
+        # MAX_CHAIN_PAGES comment below) gets entirely consumed by ONE nearby
+        # expiration's full strike range for a name like SPY, which lists
+        # strikes in $1 increments across a wide band (e.g. 550-880 seen live
+        # for a $763 spot) - so `by_strike_expiry` only ever has a single
+        # expiry_days value, and the "Terrain" strike x expiry heatmap has no
+        # second column to show any term structure at all. Narrowing the
+        # request to strikes actually near the money frees that same budget
+        # to reach multiple expirations instead of exhausting it on one.
+        #
+        # This needs a rough spot estimate BEFORE the main fetch to know
+        # where "near the money" is - but this plan has no separate Stocks
+        # entitlement to ask for that cheaply (confirmed above), so a small,
+        # cheap probe request against this same options endpoint (one page,
+        # no strike filter, sorted by soonest expiration) is used purely to
+        # derive a rough spot via the existing parity logic. If that probe
+        # fails for any reason, this falls back to the original unfiltered
+        # behavior rather than breaking the refresh - not yet confirmed live,
+        # needs verifying against the real feed the same way every fix in
+        # this file has been.
+        probe_spot: Optional[float] = None
+        try:
+            probe_resp = await self._client.get(
+                url,
+                params={
+                    "apiKey": self._api_key,
+                    "limit": 250,
+                    "sort": "expiration_date",
+                    "order": "asc",
+                },
+            )
+            probe_resp.raise_for_status()
+            probe_spot = _spot_from_snapshot_page(probe_resp.json().get("results", []))
+        except Exception:
+            log.info("%s: spot probe request failed - falling back to an unfiltered chain fetch", ticker, exc_info=True)
+
+        if probe_spot is not None:
+            strike_lo = probe_spot * 0.85
+            strike_hi = probe_spot * 1.15
+            date_hi = (now + timedelta(days=45)).strftime("%Y-%m-%d")
+            params.update({
+                "strike_price.gte": round(strike_lo, 2),
+                "strike_price.lte": round(strike_hi, 2),
+                "expiration_date.lte": date_hi,
+                "sort": "expiration_date",
+                "order": "asc",
+            })
+            log.info(
+                "%s: narrowed chain fetch to strikes %.2f-%.2f (probe spot %.2f) and expirations "
+                "through %s, to leave room for more than one expiry within the entitlement budget",
+                ticker, strike_lo, strike_hi, probe_spot, date_hi,
+            )
 
         # Belt-and-braces alongside the empty-results-page check below: if a
         # page comes back non-empty (payload["results"] has rows) but every
@@ -307,6 +361,36 @@ class PolygonOptionsProvider(OptionsDataProvider):
             timestamp=time.time(),
             contracts=contracts,
         )
+
+
+def _spot_from_snapshot_page(results: List[Dict]) -> Optional[float]:
+    """Cheap best-effort spot estimate from a single, unfiltered snapshot
+    page - used only to decide a strike range for the real fetch in
+    get_chain(), not as the final reported spot (that still goes through the
+    full parity/underlying_asset logic against the actual filtered fetch).
+    Tries underlying_asset.price/value first (works if the plan ever does
+    include it), otherwise reuses the same put-call parity approach as the
+    main fetch against whatever call/put pairs this one page happens to
+    contain.
+    """
+    pairs: Dict[Tuple[float, str], Dict[str, Tuple[float, float]]] = {}
+    for row in results:
+        underlying_asset = row.get("underlying_asset", {}) or {}
+        price = underlying_asset.get("price") or underlying_asset.get("value")
+        if price is not None:
+            return float(price)
+
+        details = row.get("details", {})
+        greeks = row.get("greeks", {}) or {}
+        strike = details.get("strike_price")
+        expiry_date = details.get("expiration_date")
+        contract_type = details.get("contract_type")
+        close_px = (row.get("day") or row.get("session") or {}).get("close")
+        delta = greeks.get("delta")
+        if strike is not None and expiry_date is not None and contract_type in ("call", "put") and close_px:
+            pairs.setdefault((float(strike), expiry_date), {})[contract_type] = (float(close_px), delta)
+
+    return _infer_spot_via_parity(pairs)
 
 
 def _infer_spot_via_parity(
