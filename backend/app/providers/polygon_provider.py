@@ -41,6 +41,7 @@ watch the terminal for request errors on your specific underlyings.
 """
 from __future__ import annotations
 
+import logging
 import time
 from statistics import median
 from typing import Dict, List, Optional, Tuple
@@ -50,7 +51,20 @@ import httpx
 from ..config import POLYGON_API_KEY
 from .base import ChainSnapshot, ContractSnapshot, OptionsDataProvider
 
+log = logging.getLogger("quantro")
+
 BASE_URL = "https://api.massive.com"
+
+# A generous ceiling on how many pages one get_chain() call will follow via
+# the vendor's next_url pagination before giving up. At limit=250/page this
+# is 25,000 contracts - comfortably more than even SPX's full chain across
+# every strike and expiry should need. This exists as defense-in-depth
+# alongside server.py's own overall per-symbol timeout: if pagination is
+# genuinely endless (a next_url that loops, or a vendor response that never
+# runs out for some other reason), this raises a specific, diagnosable error
+# ("stopped after N pages") well before that outer timeout would just report
+# a generic "timed out."
+MAX_CHAIN_PAGES = 100
 
 # Polygon/Massive's index tickers are prefixed with "I:" in most v3 endpoints
 # (e.g. I:SPX), while ETFs/equities use the bare ticker (SPY, AAPL, ...).
@@ -110,11 +124,25 @@ class PolygonOptionsProvider(OptionsDataProvider):
 
         url = f"/v3/snapshot/options/{ticker}"
         params = {"apiKey": self._api_key, "limit": 250}
+        page_count = 0
+        fetch_started = time.monotonic()
 
         while url:
+            page_count += 1
+            if page_count > MAX_CHAIN_PAGES:
+                raise RuntimeError(
+                    f"{ticker}: stopped after {MAX_CHAIN_PAGES} pages ({len(contracts)} contracts so far) "
+                    "without running out of next_url - treating this as a pagination bug/runaway "
+                    "response rather than looping forever."
+                )
             resp = await self._client.get(url, params=params)
             resp.raise_for_status()
             payload = resp.json()
+            if page_count == 1 or page_count % 10 == 0:
+                log.info(
+                    "%s: fetched page %d (%d contracts so far, %.1fs elapsed)",
+                    ticker, page_count, len(contracts), time.monotonic() - fetch_started,
+                )
 
             for row in payload.get("results", []):
                 details = row.get("details", {})
