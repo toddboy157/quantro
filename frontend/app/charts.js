@@ -252,7 +252,18 @@ export function renderGexHeatmap(container, cells, spot, {
   const rowH = innerH / strikes.length;
 
   function colorFor(v) {
-    const t = Math.min(1, Math.abs(v) / maxAbs); // 0..1 intensity, continuous (not banded)
+    const tLinear = Math.min(1, Math.abs(v) / maxAbs); // 0..1, true fraction of the largest cell
+    // Real dealer books tend to have one or two strikes (the call/put wall
+    // itself) with net GEX an order of magnitude past everything else -
+    // found live (Round 9) comparing this against real SPY data, where a
+    // single strike's ~$537M washed out a whole grid of otherwise-real
+    // $1-50M cells down to a nearly uniform, textureless wash under a
+    // straight linear scale (everything but the peak landed under ~10%
+    // intensity). A mild power curve (t^0.45) keeps the true peak at full
+    // intensity while pulling the rest of the distribution up into a
+    // visibly differentiated range, closer to how Zerano/Skylit's heatmaps
+    // read - texture across the whole grid, not just one bright cell.
+    const t = Math.pow(tLinear, 0.45);
     const alpha = 0.10 + t * 0.82;
     return v >= 0 ? `rgba(46, 207, 122, ${alpha.toFixed(3)})` : `rgba(239, 74, 95, ${alpha.toFixed(3)})`;
   }
