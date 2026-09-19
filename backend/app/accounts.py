@@ -18,6 +18,7 @@ import sqlite3
 import threading
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Optional
 
 PBKDF2_ITERATIONS = 260_000
@@ -56,6 +57,13 @@ def _hash_password(password: str, salt: bytes) -> str:
 class AccountStore:
     def __init__(self, db_path: str):
         self._db_path = db_path
+        # See the matching comment in storage.py: DB_PATH usually points at
+        # a mounted volume in production, and creating the parent directory
+        # up front turns a missing-volume mistake into a working (if
+        # not-yet-persistent) database instead of a crash loop.
+        parent = Path(db_path).parent
+        if str(parent) not in ("", "."):
+            parent.mkdir(parents=True, exist_ok=True)
         self._lock = threading.Lock()
         conn = self._connect()
         conn.executescript(_SCHEMA)
