@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>You're upgraded — Quantro</title>
+  <link rel="stylesheet" href="../../style.css" />
+</head>
+<body>
+
+  <nav class="wrap">
+    <a class="logo" href="/">Quantro<span>.</span></a>
+    <div class="nav-links">
+      <span id="account-widget"></span>
+    </div>
+  </nav>
+
+  <header class="page-hero">
+    <div class="wrap">
+      <div class="kicker">Checkout complete</div>
+      <h1 id="headline">You're all set</h1>
+      <p id="subline">Your account now has full access to the live universe.</p>
+    </div>
+  </header>
+
+  <section class="cta-section" style="border-bottom: none;">
+    <div class="wrap">
+      <a class="btn btn-primary" href="/app">Open the live dashboard →</a>
+    </div>
+  </section>
+
+  <script type="module">
+    import { renderAccountWidget, apiMe } from "/auth-client.js";
+    renderAccountWidget(document.getElementById("account-widget"));
+    apiMe().then((me) => {
+      if (me.authenticated) {
+        document.getElementById("subline").textContent =
+          `${me.email} is now on the ${me.plan === "live" ? "Live" : me.plan} plan — every underlying is unlocked.`;
+      }
+    });
+  </script>
+</body>
+</html>

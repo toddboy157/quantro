@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dev Checkout — Quantro</title>
+  <link rel="stylesheet" href="../../style.css" />
+</head>
+<body>
+
+  <nav class="wrap">
+    <a class="logo" href="/">Quantro<span>.</span></a>
+    <div class="nav-links">
+      <a href="/pricing/">Pricing</a>
+    </div>
+  </nav>
+
+  <header class="page-hero">
+    <div class="wrap">
+      <div class="kicker">Checkout</div>
+      <h1 id="plan-title">Upgrade to Live</h1>
+    </div>
+  </header>
+
+  <section>
+    <div class="wrap" style="max-width: 520px; margin: 0 auto;">
+      <div class="callout">
+        <div class="tag">Dev checkout — no real payment processor configured</div>
+        <p>This build hasn't been wired up to a real Stripe account yet (<code>STRIPE_SECRET_KEY</code> is unset in <code>backend/.env</code>), so no card is charged here. Confirming below flips your account's plan directly, so the rest of the product — gated underlyings, the account widget, everything downstream of "you're on Live" — can be tested end to end.</p>
+        <p>Once a real Stripe key and price ID are configured, this exact button click instead redirects to actual Stripe Checkout.</p>
+      </div>
+      <div id="status"></div>
+      <button class="btn btn-primary" id="confirm-btn" type="button" style="width: 100%;">Confirm upgrade (dev mode)</button>
+      <div style="text-align: center; margin-top: 14px;">
+        <a href="/pricing/" style="color: var(--text-dim); font-size: 13px;">Cancel and go back</a>
+      </div>
+    </div>
+  </section>
+
+  <script type="module">
+    import { apiDevConfirm, apiMe } from "/auth-client.js";
+
+    const params = new URLSearchParams(window.location.search);
+    const plan = params.get("plan") || "live";
+    document.getElementById("plan-title").textContent =
+      plan === "live" ? "Upgrade to Live" : `Upgrade to ${plan}`;
+
+    apiMe().then((me) => {
+      if (!me.authenticated) {
+        window.location.href = `/account/login/?next=upgrade-live`;
+      }
+    });
+
+    document.getElementById("confirm-btn").addEventListener("click", async () => {
+      const btn = document.getElementById("confirm-btn");
+      const status = document.getElementById("status");
+      btn.disabled = true;
+      btn.textContent = "Confirming…";
+      try {
+        await apiDevConfirm(plan);
+        window.location.href = "/billing/success/";
+      } catch (err) {
+        status.innerHTML = `<div class="auth-error">${err.message}</div>`;
+        btn.disabled = false;
+        btn.textContent = "Confirm upgrade (dev mode)";
+      }
+    });
+  </script>
+</body>
+</html>

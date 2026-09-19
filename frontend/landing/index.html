@@ -1,0 +1,234 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quantro — Live Dealer Positioning for Index &amp; Equity Options</title>
+  <meta name="description" content="Live dealer gamma walls, GEX/DEX, and zero-gamma flip levels for index and equity options — positioning data only, not trade signals." />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <nav class="wrap">
+    <a class="logo" href="/">Quantro<span>.</span></a>
+    <div class="nav-links">
+      <a href="#features">Features</a>
+      <a href="/methodology/">Methodology</a>
+      <a href="/pricing/">Pricing</a>
+      <a href="/faq/">FAQ</a>
+      <span id="account-widget"></span>
+      <a class="btn btn-ghost" href="/app">Open dashboard</a>
+    </div>
+  </nav>
+
+  <header class="hero">
+    <div class="wrap">
+      <span class="eyebrow"><span class="dot"></span> Live positioning · updated every 2s</span>
+      <h1>See where dealers are<br /><span class="accent">pinned, before price gets there.</span></h1>
+      <p class="lede">
+        Quantro tracks live dealer gamma exposure across index and equity options —
+        call walls, put walls, and the zero-gamma flip — so you can see the market's
+        positioning structure in real time.
+      </p>
+      <div class="hero-ctas">
+        <a class="btn btn-primary" href="/app">Open the live dashboard</a>
+        <a class="btn btn-ghost" href="#how-it-works">How it works</a>
+      </div>
+      <div class="hero-note">Positioning data only — not trade signals or investment advice.</div>
+
+      <div class="preview-card">
+        <div class="preview-top">
+          <span>SPY · Dealer Positioning</span>
+          <span class="live-badge"><span class="dot"></span> LIVE</span>
+        </div>
+        <div class="preview-grid">
+          <div class="pcard"><div class="l">Spot</div><div class="v">628.14</div></div>
+          <div class="pcard"><div class="l">Net GEX</div><div class="v neg">-$2.40B</div></div>
+          <div class="pcard"><div class="l">Call Wall</div><div class="v">635</div></div>
+          <div class="pcard"><div class="l">Put Wall</div><div class="v">625</div></div>
+          <div class="pcard"><div class="l">Zero Gamma</div><div class="v">630.6</div></div>
+        </div>
+        <div class="preview-chart">
+          <svg viewBox="0 0 1000 160" width="100%" height="100%" preserveAspectRatio="none">
+            <line x1="0" y1="40" x2="1000" y2="40" stroke="#232838" stroke-width="1" />
+            <line x1="0" y1="80" x2="1000" y2="80" stroke="#232838" stroke-width="1" />
+            <line x1="0" y1="120" x2="1000" y2="120" stroke="#232838" stroke-width="1" />
+            <line x1="0" y1="52" x2="1000" y2="52" stroke="#2ecf7a" stroke-width="1.4" stroke-dasharray="6 4" />
+            <line x1="0" y1="104" x2="1000" y2="104" stroke="#ef4a5f" stroke-width="1.4" stroke-dasharray="6 4" />
+            <line x1="0" y1="78" x2="1000" y2="78" stroke="#7c8cff" stroke-width="1.4" stroke-dasharray="6 4" />
+            <path d="M 20 90 L 60 84 L 100 92 L 140 76 L 180 82 L 220 70 L 260 74 L 300 60 L 340 66 L 380 58 L 420 64 L 460 56 L 500 62 L 540 72 L 580 68 L 620 78 L 660 74 L 700 84 L 740 80 L 780 88 L 820 82 L 860 90 L 900 86 L 940 92 L 980 88"
+              fill="none" stroke="#5b8dff" stroke-width="2" />
+          </svg>
+        </div>
+      </div>
+    </div>
+  </header>
+
+  <section id="features">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">What you get</div>
+        <h2>The full positioning picture, live</h2>
+        <p>Everything a dealer's hedging book implies about where price gets sticky, magnetized, or unstable — computed fresh from the options chain, not backfitted.</p>
+      </div>
+      <div class="feature-grid">
+        <div class="feature-card">
+          <div class="icon">▦</div>
+          <h3>Dealer walls</h3>
+          <p>The call wall and put wall — strikes where dealer gamma exposure peaks — mark the levels price tends to pin against or bounce from intraday.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">Σ</div>
+          <h3>GEX &amp; DEX by strike and expiry</h3>
+          <p>Net gamma and delta exposure broken out across every strike and expiration in the chain, visualized as a full positioning map — not just the front month.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">◎</div>
+          <h3>Zero-gamma flip level</h3>
+          <p>The spot price where net dealer gamma crosses from positive to negative — the line between a market that dampens moves and one that amplifies them.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">⟳</div>
+          <h3>Live, not end-of-day</h3>
+          <p>Positioning recomputed on a live refresh cycle across your whole underlying universe — index and equity options side by side.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">▤</div>
+          <h3>Price chart with walls overlaid</h3>
+          <p>A candlestick view of spot with call wall, put wall, and zero-gamma drawn directly on the chart, so structure and price move together.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">⌗</div>
+          <h3>Built for a real universe</h3>
+          <p>SPX, SPY, QQQ, and single names side by side, with the same calc engine and data pipeline behind every one of them.</p>
+        </div>
+        <div class="feature-card">
+          <div class="icon">⇄</div>
+          <h3>Multi-underlying compare</h3>
+          <p>Line up net GEX, call wall, put wall, and zero-gamma across your whole watchlist in one table and chart — see which names are gamma-heavy at a glance.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="how-it-works">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">Under the hood</div>
+        <h2>From raw chain to dealer wall in four steps</h2>
+        <p>No black box — every number on the dashboard traces back to a real options chain and a documented calculation.</p>
+      </div>
+      <div class="steps">
+        <div class="step">
+          <div class="num">1</div>
+          <h3>Ingest the chain</h3>
+          <p>Pull the live options chain — strikes, open interest, implied vol, greeks — for every underlying you're tracking.</p>
+        </div>
+        <div class="step">
+          <div class="num">2</div>
+          <h3>Compute exposure</h3>
+          <p>Recompute gamma and delta per contract, sign them by the standard dealer-short convention, and weight by open interest and contract size.</p>
+        </div>
+        <div class="step">
+          <div class="num">3</div>
+          <h3>Aggregate &amp; locate</h3>
+          <p>Sum exposure by strike and by expiry, find the call wall, put wall, and the zero-gamma crossing via scenario re-pricing.</p>
+        </div>
+        <div class="step">
+          <div class="num">4</div>
+          <h3>Serve it live</h3>
+          <p>Push the recomputed positioning to your dashboard on a short refresh cycle, with history retained for context.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="disclaimer-band">
+    <div class="disclaimer-inner">
+      <span class="tag">Important</span>
+      <p><strong>Quantro shows positioning data only.</strong> Dealer walls, GEX/DEX, and the zero-gamma level describe options market structure as it exists right now — they are not buy/sell signals, price targets, or investment advice.</p>
+      <p>The dealer-short hedging convention is a standard industry assumption, not a verified fact about any specific market maker's book. Always do your own research. <a href="/legal/" style="color: var(--amber);">Read the full disclaimer →</a></p>
+    </div>
+  </div>
+
+  <section id="pricing">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">Pricing</div>
+        <h2>Start free, upgrade when you need real time</h2>
+        <p>Every tier gets the full calc engine and chart set — the difference is data latency and how much of the universe you can track. <a href="/pricing/" style="color: var(--accent); text-decoration: none;">See full plan comparison →</a></p>
+      </div>
+      <div class="pricing-grid">
+        <div class="price-card">
+          <h3>Delayed</h3>
+          <div class="price">Free</div>
+          <div class="desc">Explore the dashboard on delayed positioning data.</div>
+          <ul>
+            <li>15-minute delayed chain data</li>
+            <li>Up to 3 underlyings</li>
+            <li>Dealer walls &amp; zero gamma</li>
+            <li>Candlestick chart with wall overlays</li>
+          </ul>
+          <a class="btn btn-ghost" href="/app">Open dashboard</a>
+        </div>
+        <div class="price-card featured">
+          <h3>Live</h3>
+          <div class="price">$49<span>/mo</span></div>
+          <div class="desc">Real-time positioning across your full watchlist.</div>
+          <ul>
+            <li>Real-time chain data</li>
+            <li>Full underlying universe (index + equities)</li>
+            <li>Full history &amp; candlestick charts</li>
+            <li>Priority refresh cadence</li>
+          </ul>
+          <a class="btn btn-primary" href="/app">Open dashboard</a>
+        </div>
+        <div class="price-card">
+          <h3>Desk</h3>
+          <div class="price">Custom</div>
+          <div class="desc">For teams that want this wired into their own tools.</div>
+          <ul>
+            <li>Everything in Live</li>
+            <li>API access to raw positioning data</li>
+            <li>Multi-user access</li>
+            <li>Custom underlying universe</li>
+          </ul>
+          <a class="btn btn-ghost" href="#">Contact us</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-section">
+    <div class="wrap">
+      <h2>See today's dealer walls right now</h2>
+      <p>No signup required to explore the live dashboard.</p>
+      <a class="btn btn-primary" href="/app">Open the live dashboard →</a>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="footer-grid">
+        <a class="logo" href="/">Quantro<span>.</span></a>
+        <div class="footer-links">
+          <a href="#features">Features</a>
+          <a href="/methodology/">Methodology</a>
+          <a href="/pricing/">Pricing</a>
+          <a href="/faq/">FAQ</a>
+          <a href="/legal/">Legal &amp; disclaimer</a>
+          <a href="/app">Dashboard</a>
+        </div>
+      </div>
+      <div class="footer-fine">
+        Quantro provides options positioning data for informational purposes only. Nothing here is investment advice, a recommendation, or a solicitation to buy or sell any security or derivative. Options trading involves substantial risk of loss. See the <a href="/legal/" style="color: inherit;">full disclaimer</a>.
+      </div>
+    </div>
+  </footer>
+
+  <script type="module">
+    import { renderAccountWidget } from "/auth-client.js";
+    renderAccountWidget(document.getElementById("account-widget"));
+  </script>
+</body>
+</html>

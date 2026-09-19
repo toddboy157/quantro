@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Methodology — Quantro</title>
+  <meta name="description" content="How Quantro computes dealer gamma exposure, delta exposure, dealer walls, and the zero-gamma flip level from a live options chain." />
+  <link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+
+  <nav class="wrap">
+    <a class="logo" href="/">Quantro<span>.</span></a>
+    <div class="nav-links">
+      <a href="/#features">Features</a>
+      <a href="/methodology/" class="active">Methodology</a>
+      <a href="/pricing/">Pricing</a>
+      <a href="/faq/">FAQ</a>
+      <span id="account-widget"></span>
+      <a class="btn btn-ghost" href="/app">Open dashboard</a>
+    </div>
+  </nav>
+
+  <header class="page-hero">
+    <div class="wrap">
+      <div class="kicker">Methodology</div>
+      <h1>How the numbers on the dashboard are actually computed</h1>
+      <p>No black box. Every figure traces back to a real options chain and a documented calculation — here's the whole pipeline, formulas included.</p>
+    </div>
+  </header>
+
+  <section>
+    <div class="wrap doc-section">
+
+      <h2>1. The data</h2>
+      <p>Every refresh cycle, Quantro pulls the full live options chain for each underlying it tracks: every strike, every expiry, open interest, implied volatility, and (where the vendor provides them) greeks. Index and equity/ETF options are treated the same way once the chain is in hand.</p>
+
+      <h2>2. Recomputing the greeks</h2>
+      <p>Rather than trusting a vendor's greeks directly, Quantro recomputes delta and gamma itself with a standard Black-Scholes model, so every downstream number is consistent — including at hypothetical spot levels the vendor never actually quoted (needed for the zero-gamma calculation below).</p>
+      <div class="formula-box">d1 = [ln(S/K) + (r − q + σ²/2)·T] / (σ·√T)
+Γ  = φ(d1) / (S·σ·√T)
+Δ_call =  N(d1)
+Δ_put  =  N(d1) − 1</div>
+      <p>where <strong>S</strong> is spot, <strong>K</strong> is strike, <strong>T</strong> is time to expiry in years, <strong>σ</strong> is implied volatility, <strong>r</strong> is the risk-free rate, <strong>q</strong> is the dividend yield (assumed 0), <strong>φ</strong> is the standard normal density, and <strong>N</strong> is the standard normal CDF.</p>
+
+      <h2>3. Gamma exposure (GEX) and delta exposure (DEX)</h2>
+      <p>Each contract's gamma is weighted by its open interest and contract size, then signed according to the industry-standard dealer-positioning convention: customers are assumed to be net buyers of calls and puts, which means dealers who take the other side of that flow are net <strong>short</strong> calls and <strong>short</strong> puts. A dealer who is short a call hedges by buying the underlying as it rises — a stabilizing, "long gamma" flow. That convention is what turns call open interest into positive GEX and put open interest into negative GEX below.</p>
+      <div class="formula-box">Contract GEX =  Γ × OpenInterest × 100 × Spot² × 0.01
+              (sign: + for calls, − for puts)
+
+Net GEX (strike)  = Σ call GEX + Σ put GEX, at that strike
+Net GEX (total)   = Σ over every strike and expiry</div>
+      <p>DEX follows the same shape, substituting delta for gamma and dropping the extra factor of spot (delta exposure scales linearly with spot movement, not quadratically like gamma):</p>
+      <div class="formula-box">Contract DEX =  Δ × OpenInterest × 100 × Spot
+              (sign: + for calls, − for puts)</div>
+
+      <h2>4. Dealer walls</h2>
+      <p>The <strong>call wall</strong> is the strike with the highest positive net GEX; the <strong>put wall</strong> is the strike with the lowest (most negative) net GEX. These are the strikes where dealer hedging flow is theoretically largest in magnitude — in practice, levels price tends to gravitate toward, pin against, or bounce from as expiry approaches and dealers rebalance.</p>
+
+      <h2>5. The zero-gamma flip level</h2>
+      <p>Net GEX is a function of spot, not just a single number — as spot moves, every contract's gamma (and therefore every contract's GEX) changes too. The zero-gamma level is the spot price at which total net GEX would cross from positive to negative. Quantro finds it by actually re-pricing the whole chain's gamma at a grid of hypothetical spot levels spanning ±12% around the current spot (61 points), then linearly interpolating to the exact level where the sign flips.</p>
+      <p>Why it matters: when spot is <strong>above</strong> zero-gamma, dealers are net long gamma and tend to hedge in a way that dampens volatility (buy dips, sell rips). When spot is <strong>below</strong> zero-gamma, dealers are net short gamma, and hedging flow tends to amplify moves in whichever direction price is already going — the "negative gamma pocket" you'll sometimes see called out on the dashboard.</p>
+
+      <h2>6. Refresh cadence</h2>
+      <p>The dashboard polls the backend roughly every 2 seconds. Under the hood, that doesn't mean every input changes every tick — real markets don't work that way either: exchanges publish official open interest once per session, and even paid vendors don't refresh it tick-by-tick. Quantro's simulated provider mirrors this deliberately (OI regenerates every ~2 minutes, IV every ~30s, spot moves every tick); the live Massive/Polygon connector simply reflects whatever cadence the vendor itself updates on.</p>
+
+      <div class="callout">
+        <div class="tag">Important</div>
+        <p><strong>This is positioning data, not a trading signal.</strong> Walls and the zero-gamma level describe options market structure as it exists right now, computed from a documented, inspectable formula — they are not predictions, price targets, or investment advice.</p>
+        <p>The dealer-short hedging convention above is a standard industry assumption used across the positioning-data industry, not a verified fact about any specific market maker's actual book. See the <a href="/legal/" style="color: var(--amber);">full disclaimer</a> for more.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="cta-section">
+    <div class="wrap">
+      <h2>See it computed live</h2>
+      <p>Every formula above, running right now against a real chain.</p>
+      <a class="btn btn-primary" href="/app">Open the live dashboard →</a>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="footer-grid">
+        <a class="logo" href="/">Quantro<span>.</span></a>
+        <div class="footer-links">
+          <a href="/#features">Features</a>
+          <a href="/methodology/">Methodology</a>
+          <a href="/pricing/">Pricing</a>
+          <a href="/faq/">FAQ</a>
+          <a href="/legal/">Legal &amp; disclaimer</a>
+          <a href="/app">Dashboard</a>
+        </div>
+      </div>
+      <div class="footer-fine">
+        Quantro provides options positioning data for informational purposes only. Nothing here is investment advice, a recommendation, or a solicitation to buy or sell any security or derivative. Options trading involves substantial risk of loss. See the <a href="/legal/" style="color: inherit;">full disclaimer</a>.
+      </div>
+    </div>
+  </footer>
+
+  <script type="module">
+    import { renderAccountWidget } from "/auth-client.js";
+    renderAccountWidget(document.getElementById("account-widget"));
+  </script>
+</body>
+</html>

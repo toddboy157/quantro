@@ -1,0 +1,17 @@
+# Core web layer
+starlette>=0.37
+uvicorn[standard]>=0.30
+python-dotenv>=1.0
+itsdangerous>=2.1   # signs the session cookie (Starlette's SessionMiddleware)
+
+# Calc engine
+numpy>=1.26
+pandas>=2.0
+
+# Live vendor connector (Polygon/Massive)
+httpx>=0.27
+
+# Optional upgrade path (see server.py docstring): once available, install
+# these to add real WebSocket push instead of the current HTTP-polling
+# fallback used because this build sandbox couldn't install them:
+# websockets>=12

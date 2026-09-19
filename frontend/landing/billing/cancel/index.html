@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Checkout canceled — Quantro</title>
+  <link rel="stylesheet" href="../../style.css" />
+</head>
+<body>
+
+  <nav class="wrap">
+    <a class="logo" href="/">Quantro<span>.</span></a>
+    <div class="nav-links">
+      <span id="account-widget"></span>
+    </div>
+  </nav>
+
+  <header class="page-hero">
+    <div class="wrap">
+      <div class="kicker">Checkout</div>
+      <h1>Checkout canceled</h1>
+      <p>No changes were made to your account — you're still on the same plan as before.</p>
+    </div>
+  </header>
+
+  <section class="cta-section" style="border-bottom: none;">
+    <div class="wrap">
+      <a class="btn btn-primary" href="/pricing/">Back to pricing</a>
+    </div>
+  </section>
+
+  <script type="module">
+    import { renderAccountWidget } from "/auth-client.js";
+    renderAccountWidget(document.getElementById("account-widget"));
+  </script>
+</body>
+</html>

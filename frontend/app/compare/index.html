@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quantro — Compare Underlyings</title>
+  <link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+  <header>
+    <a class="brand-link" href="/" title="Back to Quantro home">Quantro</a>
+    <h1><span>·</span> Compare Underlyings <span class="badge" id="data-badge">…</span></h1>
+    <nav class="app-nav">
+      <a href="/app/">Dashboard</a>
+      <a href="/app/compare/" class="active">Compare</a>
+    </nav>
+    <div class="controls">
+      <span id="account-widget"></span>
+      <span id="status"><span class="dot" id="status-dot"></span><span id="status-text">connecting…</span></span>
+    </div>
+  </header>
+  <div class="wrap-note" id="lock-note-row"></div>
+
+  <main>
+    <div class="panel">
+      <h2>Net GEX by Underlying</h2>
+      <div class="chart-box" id="chart-compare-gex"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Positioning Snapshot</h2>
+      <div class="compare-table-wrap">
+        <table class="compare-table" id="compare-table">
+          <thead>
+            <tr>
+              <th>Symbol</th>
+              <th>Spot</th>
+              <th>Net GEX</th>
+              <th>Call Wall</th>
+              <th>Put Wall</th>
+              <th>Zero Gamma</th>
+            </tr>
+          </thead>
+          <tbody id="compare-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <footer id="footer-note">
+    Prototype build.
+  </footer>
+
+  <script type="module" src="compare.js"></script>
+  <script type="module">
+    import { renderAccountWidget } from "/auth-client.js";
+    renderAccountWidget(document.getElementById("account-widget"));
+  </script>
+</body>
+</html>

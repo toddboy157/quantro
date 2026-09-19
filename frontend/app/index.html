@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Quantro — Dealer Positioning</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <a class="brand-link" href="/" title="Back to Quantro home">Quantro</a>
+    <h1><span>·</span> Dealer Positioning <span class="badge" id="data-badge">…</span></h1>
+    <nav class="app-nav">
+      <a href="/app/" class="active">Dashboard</a>
+      <a href="/app/compare/">Compare</a>
+    </nav>
+    <div class="controls">
+      <span id="account-widget"></span>
+      <select id="symbol-select"></select>
+      <span id="status"><span class="dot" id="status-dot"></span><span id="status-text">connecting…</span></span>
+    </div>
+  </header>
+  <div class="wrap-note" id="lock-note-row"></div>
+
+  <main>
+    <div class="summary-grid">
+      <div class="card"><div class="label">Spot</div><div class="value" id="v-spot">—</div></div>
+      <div class="card"><div class="label">Net GEX</div><div class="value" id="v-netgex">—</div></div>
+      <div class="card"><div class="label">Call Wall</div><div class="value" id="v-callwall">—</div></div>
+      <div class="card"><div class="label">Put Wall</div><div class="value" id="v-putwall">—</div></div>
+      <div class="card"><div class="label">Zero Gamma</div><div class="value" id="v-zerogamma">—</div></div>
+    </div>
+
+    <div class="panel panel-headline">
+      <h2>Price &amp; Dealer Walls</h2>
+      <div class="chart-box chart-box-tall" id="chart-candles"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Gamma Exposure by Strike</h2>
+      <div class="chart-box" id="chart-bystrike"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Dealer Positioning Map — Strike × Expiry</h2>
+      <p class="panel-sub">Net GEX at every strike across the expiry term structure. Green = call-dominated (net-positive), red = put-dominated (net-negative); the highlighted row marks the strike nearest current spot.</p>
+      <div class="chart-box chart-box-map" id="chart-byexpiry"></div>
+    </div>
+
+    <div class="panel">
+      <h2>Net GEX &amp; Spot — Recent History</h2>
+      <div class="chart-box" id="chart-history"></div>
+    </div>
+  </main>
+
+  <footer id="footer-note">
+    Prototype build.
+  </footer>
+
+  <script type="module" src="app.js"></script>
+  <script type="module">
+    import { renderAccountWidget } from "/auth-client.js";
+    renderAccountWidget(document.getElementById("account-widget"));
+  </script>
+</body>
+</html>

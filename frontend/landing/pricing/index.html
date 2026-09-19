@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Pricing — Quantro</title>
+  <meta name="description" content="Quantro pricing: start free on delayed dealer positioning data, upgrade to real-time, or get API access for your desk." />
+  <link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+
+  <nav class="wrap">
+    <a class="logo" href="/">Quantro<span>.</span></a>
+    <div class="nav-links">
+      <a href="/#features">Features</a>
+      <a href="/methodology/">Methodology</a>
+      <a href="/pricing/" class="active">Pricing</a>
+      <a href="/faq/">FAQ</a>
+      <span id="account-widget"></span>
+      <a class="btn btn-ghost" href="/app">Open dashboard</a>
+    </div>
+  </nav>
+
+  <header class="page-hero">
+    <div class="wrap">
+      <div class="kicker">Pricing</div>
+      <h1>Start free, upgrade when you need real time</h1>
+      <p>Every tier runs the exact same calc engine and chart set — the difference is data latency, universe size, and access.</p>
+    </div>
+  </header>
+
+  <section>
+    <div class="wrap">
+      <div class="pricing-grid">
+        <div class="price-card">
+          <h3>Delayed</h3>
+          <div class="price">Free</div>
+          <div class="desc">Explore the dashboard on delayed positioning data.</div>
+          <ul>
+            <li>15-minute delayed chain data</li>
+            <li>Up to 3 underlyings</li>
+            <li>Dealer walls &amp; zero gamma</li>
+            <li>Candlestick chart with wall overlays</li>
+            <li>2s dashboard refresh</li>
+          </ul>
+          <a class="btn btn-ghost" href="/app">Open dashboard</a>
+        </div>
+        <div class="price-card featured">
+          <h3>Live</h3>
+          <div class="price">$49<span>/mo</span></div>
+          <div class="desc">Real-time positioning across your full watchlist.</div>
+          <ul>
+            <li>Real-time chain data</li>
+            <li>Full underlying universe (index + equities)</li>
+            <li>Full history &amp; candlestick charts</li>
+            <li>Priority refresh cadence</li>
+            <li>Email support</li>
+          </ul>
+          <button class="btn btn-primary" id="upgrade-live-btn" type="button">Upgrade to Live</button>
+          <div id="upgrade-status" style="margin-top: 10px; font-size: 12.5px; color: var(--text-dim);"></div>
+        </div>
+        <div class="price-card">
+          <h3>Desk</h3>
+          <div class="price">Custom</div>
+          <div class="desc">For teams that want this wired into their own tools.</div>
+          <ul>
+            <li>Everything in Live</li>
+            <li>API access to raw positioning data</li>
+            <li>Multi-user access</li>
+            <li>Custom underlying universe</li>
+            <li>Priority support</li>
+          </ul>
+          <a class="btn btn-ghost" href="#contact">Contact us</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section style="border-top: 1px solid var(--panel-border);">
+    <div class="wrap">
+      <div class="section-head">
+        <div class="kicker">Compare plans</div>
+        <h2>Every feature, side by side</h2>
+      </div>
+      <div class="compare-table-wrap">
+        <table class="compare-table">
+          <thead>
+            <tr>
+              <th>Feature</th>
+              <th>Delayed</th>
+              <th>Live</th>
+              <th>Desk</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Data latency</td><td>15-minute delayed</td><td>Real-time</td><td>Real-time</td></tr>
+            <tr><td>Underlyings tracked</td><td>Up to 3</td><td>Full universe</td><td>Custom universe</td></tr>
+            <tr><td>Dealer walls &amp; zero gamma</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+            <tr><td>Candlestick chart with walls</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+            <tr><td>GEX / DEX by strike &amp; expiry</td><td class="check">✓</td><td class="check">✓</td><td class="check">✓</td></tr>
+            <tr><td>Full positioning history</td><td class="dash">Limited</td><td class="check">✓</td><td class="check">✓</td></tr>
+            <tr><td>Raw data API access</td><td class="dash">—</td><td class="dash">—</td><td class="check">✓</td></tr>
+            <tr><td>Multi-user access</td><td class="dash">—</td><td class="dash">—</td><td class="check">✓</td></tr>
+            <tr><td>Support</td><td>Community</td><td>Email</td><td>Priority</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section id="contact" style="border-top: 1px solid var(--panel-border);">
+    <div class="wrap doc-section">
+      <div class="section-head">
+        <div class="kicker">Desk plan</div>
+        <h2>Want Quantro wired into your own tools?</h2>
+        <p>The Desk plan is built for teams that want raw positioning data flowing into their own systems, not just the dashboard.</p>
+      </div>
+      <div class="callout" style="max-width: 620px; margin: 0 auto;">
+        <p>This is a prototype build, so Desk-plan billing isn't wired up yet — for now, reach out directly to talk about API access and multi-user needs and we'll figure out the right setup.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-section">
+    <div class="wrap">
+      <h2>See today's dealer walls right now</h2>
+      <p>No signup required to explore the live dashboard.</p>
+      <a class="btn btn-primary" href="/app">Open the live dashboard →</a>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="footer-grid">
+        <a class="logo" href="/">Quantro<span>.</span></a>
+        <div class="footer-links">
+          <a href="/#features">Features</a>
+          <a href="/methodology/">Methodology</a>
+          <a href="/pricing/">Pricing</a>
+          <a href="/faq/">FAQ</a>
+          <a href="/legal/">Legal &amp; disclaimer</a>
+          <a href="/app">Dashboard</a>
+        </div>
+      </div>
+      <div class="footer-fine">
+        Quantro provides options positioning data for informational purposes only. Nothing here is investment advice, a recommendation, or a solicitation to buy or sell any security or derivative. Options trading involves substantial risk of loss. See the <a href="/legal/" style="color: inherit;">full disclaimer</a>.
+      </div>
+    </div>
+  </footer>
+
+  <script type="module">
+    import { renderAccountWidget, apiMe, apiCheckout } from "/auth-client.js";
+
+    renderAccountWidget(document.getElementById("account-widget"));
+
+    const btn = document.getElementById("upgrade-live-btn");
+    const status = document.getElementById("upgrade-status");
+
+    async function startUpgrade() {
+      btn.disabled = true;
+      status.textContent = "Starting checkout…";
+      try {
+        const url = await apiCheckout("live");
+        window.location.href = url;
+      } catch (err) {
+        status.textContent = err.message;
+        btn.disabled = false;
+      }
+    }
+
+    apiMe().then((me) => {
+      if (me.authenticated && (me.plan === "live" || me.plan === "desk")) {
+        btn.textContent = "You're on this plan";
+        btn.disabled = true;
+        btn.classList.remove("btn-primary");
+        btn.classList.add("btn-ghost");
+        return;
+      }
+      // Coming straight from a fresh signup meant to upgrade - skip the
+      // second click and go straight into checkout.
+      if (me.authenticated && new URLSearchParams(window.location.search).get("auto_upgrade") === "1") {
+        startUpgrade();
+      }
+    });
+
+    btn.addEventListener("click", async () => {
+      const me = await apiMe();
+      if (!me.authenticated) {
+        window.location.href = "/account/signup/?next=upgrade-live";
+        return;
+      }
+      startUpgrade();
+    });
+  </script>
+</body>
+</html>

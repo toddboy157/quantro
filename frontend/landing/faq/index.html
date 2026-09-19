@@ -1,0 +1,122 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>FAQ — Quantro</title>
+  <meta name="description" content="Frequently asked questions about Quantro's dealer positioning data, GEX/DEX, refresh cadence, and coverage." />
+  <link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+
+  <nav class="wrap">
+    <a class="logo" href="/">Quantro<span>.</span></a>
+    <div class="nav-links">
+      <a href="/#features">Features</a>
+      <a href="/methodology/">Methodology</a>
+      <a href="/pricing/">Pricing</a>
+      <a href="/faq/" class="active">FAQ</a>
+      <span id="account-widget"></span>
+      <a class="btn btn-ghost" href="/app">Open dashboard</a>
+    </div>
+  </nav>
+
+  <header class="page-hero">
+    <div class="wrap">
+      <div class="kicker">FAQ</div>
+      <h1>Frequently asked questions</h1>
+      <p>If something's not covered here, the <a href="/methodology/" style="color: var(--accent);">methodology page</a> goes deeper on the actual calculations.</p>
+    </div>
+  </header>
+
+  <section>
+    <div class="wrap">
+      <div class="faq-list">
+
+        <details class="faq-item">
+          <summary>What is "dealer positioning" data?</summary>
+          <p>It's a read on options market structure derived from open interest and greeks across a live chain — specifically, where market makers' hedging flow is concentrated (the "walls") and where it flips from stabilizing to destabilizing (the "zero-gamma level"). It describes the current state of the options market, not a prediction of where price is headed.</p>
+        </details>
+
+        <details class="faq-item">
+          <summary>Is this a trading signal or investment advice?</summary>
+          <p>No. Quantro shows positioning data only — dealer walls, GEX, DEX, and the zero-gamma level as they exist right now. None of it is a buy/sell signal, a price target, or investment advice. See the <a href="/legal/" style="color: var(--accent);">full disclaimer</a> for details.</p>
+        </details>
+
+        <details class="faq-item">
+          <summary>What's a "call wall" and "put wall"?</summary>
+          <p>The call wall is the strike with the highest positive net gamma exposure; the put wall is the strike with the lowest (most negative). These are strikes where dealer hedging flow is theoretically largest — levels price often gravitates toward, pins against, or bounces from. Full formula on the <a href="/methodology/" style="color: var(--accent);">methodology page</a>.</p>
+        </details>
+
+        <details class="faq-item">
+          <summary>What's the "zero-gamma level"?</summary>
+          <p>The spot price where total dealer gamma exposure crosses from positive to negative. Above it, dealer hedging tends to dampen volatility; below it, hedging flow tends to amplify whatever move is already happening. Quantro computes it by re-pricing the whole chain across a range of hypothetical spot levels and finding the sign crossing.</p>
+        </details>
+
+        <details class="faq-item">
+          <summary>How often does the data update?</summary>
+          <p>The dashboard polls every 2 seconds. On the free Delayed plan, the underlying chain data itself is 15-minute delayed (a vendor-side limitation, not a Quantro one); the Live plan uses real-time chain data underneath that same 2-second dashboard refresh.</p>
+        </details>
+
+        <details class="faq-item">
+          <summary>Which underlyings are covered?</summary>
+          <p>Index and single-name equity options — SPX, SPY, and QQQ alongside individual names like AAPL, NVDA, MSFT, TSLA, and AMZN. The Delayed plan covers up to 3 underlyings at a time; Live and Desk cover the full universe.</p>
+        </details>
+
+        <details class="faq-item">
+          <summary>Where does the data come from?</summary>
+          <p>Live options chain data (open interest, implied volatility, and greeks) from a licensed market data vendor. Quantro recomputes gamma and delta itself from that raw chain using its own Black-Scholes implementation, so every number on the dashboard is consistent and traceable to a documented formula rather than a vendor's own aggregate.</p>
+        </details>
+
+        <details class="faq-item">
+          <summary>Why would net GEX or a wall level suddenly jump between ticks?</summary>
+          <p>Open interest is only published once per session by the exchange (real vendors don't refresh it tick-by-tick either) - so most of a wall's movement between ticks comes from spot itself moving, not from OI changing. A bigger jump usually means either an options expiry rolling off, or open interest updating at its normal session cadence.</p>
+        </details>
+
+        <details class="faq-item">
+          <summary>Is the "dealer short gamma" assumption verified?</summary>
+          <p>No — it's the standard industry convention used across the positioning-data industry (customers are assumed net buyers of options, so dealers who take the other side hedge as if net short). It's a reasonable, widely-used assumption, not a confirmed fact about any specific market maker's actual book.</p>
+        </details>
+
+        <details class="faq-item">
+          <summary>Do I need an account to use the dashboard?</summary>
+          <p>No signup is required to explore the Delayed plan — just open the dashboard. Live and Desk plans will require an account once billing is wired up (this is currently a prototype build).</p>
+        </details>
+
+      </div>
+    </div>
+  </section>
+
+  <section class="cta-section">
+    <div class="wrap">
+      <h2>Still have a question?</h2>
+      <p>Check the methodology page, or reach out about the Desk plan.</p>
+      <a class="btn btn-primary" href="/methodology/">Read the methodology →</a>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="footer-grid">
+        <a class="logo" href="/">Quantro<span>.</span></a>
+        <div class="footer-links">
+          <a href="/#features">Features</a>
+          <a href="/methodology/">Methodology</a>
+          <a href="/pricing/">Pricing</a>
+          <a href="/faq/">FAQ</a>
+          <a href="/legal/">Legal &amp; disclaimer</a>
+          <a href="/app">Dashboard</a>
+        </div>
+      </div>
+      <div class="footer-fine">
+        Quantro provides options positioning data for informational purposes only. Nothing here is investment advice, a recommendation, or a solicitation to buy or sell any security or derivative. Options trading involves substantial risk of loss. See the <a href="/legal/" style="color: inherit;">full disclaimer</a>.
+      </div>
+    </div>
+  </footer>
+
+  <script type="module">
+    import { renderAccountWidget } from "/auth-client.js";
+    renderAccountWidget(document.getElementById("account-widget"));
+  </script>
+</body>
+</html>

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Sign up — Quantro</title>
+  <link rel="stylesheet" href="../../style.css" />
+</head>
+<body>
+
+  <nav class="wrap">
+    <a class="logo" href="/">Quantro<span>.</span></a>
+    <div class="nav-links">
+      <a href="/#features">Features</a>
+      <a href="/methodology/">Methodology</a>
+      <a href="/pricing/">Pricing</a>
+      <a href="/faq/">FAQ</a>
+    </div>
+  </nav>
+
+  <header class="page-hero">
+    <div class="wrap">
+      <div class="kicker">Account</div>
+      <h1>Create your account</h1>
+      <p>No signup needed just to explore the free Delayed plan — this is only for upgrading to Live or Desk.</p>
+    </div>
+  </header>
+
+  <section>
+    <div class="wrap auth-form-wrap">
+      <form class="auth-form" id="signup-form">
+        <div id="form-error"></div>
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" required autocomplete="email" />
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" required autocomplete="new-password" minlength="8" />
+        <button class="btn btn-primary" type="submit" id="submit-btn">Create account</button>
+      </form>
+      <div class="auth-switch">Already have an account? <a href="/account/login/" id="login-link">Log in</a></div>
+    </div>
+  </section>
+
+  <script type="module">
+    import { apiSignup } from "/auth-client.js";
+
+    const params = new URLSearchParams(window.location.search);
+    const next = params.get("next");
+    if (next) {
+      document.getElementById("login-link").href = `/account/login/?next=${encodeURIComponent(next)}`;
+    }
+
+    const form = document.getElementById("signup-form");
+    const errorBox = document.getElementById("form-error");
+    const submitBtn = document.getElementById("submit-btn");
+
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      errorBox.innerHTML = "";
+      submitBtn.disabled = true;
+      submitBtn.textContent = "Creating account…";
+      try {
+        await apiSignup(form.email.value, form.password.value);
+        if (next === "upgrade-live") {
+          window.location.href = "/pricing/?auto_upgrade=1";
+        } else {
+          window.location.href = "/app";
+        }
+      } catch (err) {
+        errorBox.innerHTML = `<div class="auth-error">${err.message}</div>`;
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Create account";
+      }
+    });
+  </script>
+</body>
+</html>

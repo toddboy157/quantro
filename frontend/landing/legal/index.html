@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Legal &amp; Disclaimer — Quantro</title>
+  <meta name="description" content="Quantro's risk disclaimer: positioning data only, not investment advice, no guarantee of accuracy." />
+  <link rel="stylesheet" href="../style.css" />
+</head>
+<body>
+
+  <nav class="wrap">
+    <a class="logo" href="/">Quantro<span>.</span></a>
+    <div class="nav-links">
+      <a href="/#features">Features</a>
+      <a href="/methodology/">Methodology</a>
+      <a href="/pricing/">Pricing</a>
+      <a href="/faq/">FAQ</a>
+      <span id="account-widget"></span>
+      <a class="btn btn-ghost" href="/app">Open dashboard</a>
+    </div>
+  </nav>
+
+  <header class="page-hero">
+    <div class="wrap">
+      <div class="kicker">Legal</div>
+      <h1>Disclaimer &amp; terms of use</h1>
+      <p>Last updated September 14, 2026. Read this before using Quantro's dashboard or any data it displays.</p>
+    </div>
+  </header>
+
+  <section>
+    <div class="wrap doc-section">
+
+      <div class="callout">
+        <div class="tag">In short</div>
+        <p>Quantro shows options positioning data only. Nothing on this site or in the dashboard is investment advice, a recommendation, or a solicitation to buy or sell any security or derivative. Options trading involves substantial risk of loss and is not suitable for everyone.</p>
+      </div>
+
+      <h2>1. Not investment advice</h2>
+      <p>All data, charts, and figures provided by Quantro — including dealer walls, gamma exposure (GEX), delta exposure (DEX), and the zero-gamma flip level — are descriptive measures of current options market structure. They are provided for informational and educational purposes only and do not constitute investment, financial, legal, or tax advice. Quantro is not a registered investment adviser, broker-dealer, or financial planner, and nothing here should be construed as a personalized recommendation to buy, sell, or hold any security, option, or other financial instrument.</p>
+
+      <h2>2. No guarantee of accuracy</h2>
+      <p>Positioning data is derived from third-party market data vendors and computed using models and assumptions described on the <a href="/methodology/" style="color: var(--accent);">methodology page</a>. While Quantro aims for accuracy, data may be delayed, incomplete, or contain errors, and calculated figures (including walls and zero-gamma levels) are theoretical outputs of a model, not guaranteed or verified market outcomes. Quantro makes no warranty, express or implied, as to the accuracy, completeness, or timeliness of any data displayed.</p>
+
+      <h2>3. Modeling assumptions</h2>
+      <p>In particular, the dealer-short hedging convention used to sign gamma and delta exposure (assuming dealers are net short calls and puts based on typical customer flow) is a standard assumption used broadly across the options positioning-data industry. It is not a verified fact about any specific market maker's actual book, and actual dealer positioning may differ materially from what this convention implies. Implied volatility, greeks, and open interest inputs are themselves vendor-reported figures and subject to that vendor's own data quality and refresh cadence.</p>
+
+      <h2>4. No guarantee of results</h2>
+      <p>Past patterns in dealer positioning data (such as price historically reacting near a call wall, put wall, or zero-gamma level) do not guarantee similar behavior in the future. Markets are influenced by many factors beyond options positioning. Any decisions made using information from Quantro are made at your own discretion and risk.</p>
+
+      <h2>5. Risk of loss</h2>
+      <p>Trading options and other derivatives involves substantial risk of loss and is not suitable for all investors. You should carefully consider whether trading is appropriate for you in light of your financial condition, and consult a qualified, licensed professional before making any investment decision.</p>
+
+      <h2>6. Third-party data</h2>
+      <p>Quantro sources live options chain data from third-party market data providers. Quantro is not responsible for the accuracy, availability, or licensing terms of any third-party data source, and your use of Quantro is also subject to those providers' own terms where applicable.</p>
+
+      <h2>7. Service availability</h2>
+      <p>Quantro is provided on an "as is" and "as available" basis, currently as a prototype/beta product. Features, pricing, data coverage, and availability may change at any time without notice, and the service may experience downtime, delays, or interruptions.</p>
+
+      <h2>8. Changes to this disclaimer</h2>
+      <p>This disclaimer may be updated from time to time. Continued use of Quantro after changes are posted constitutes acceptance of the revised terms.</p>
+
+      <h2>9. Contact</h2>
+      <p>Questions about this disclaimer or how positioning data is calculated can be directed through the Desk plan contact option on the <a href="/pricing/" style="color: var(--accent);">pricing page</a>.</p>
+
+    </div>
+  </section>
+
+  <section class="cta-section">
+    <div class="wrap">
+      <h2>Understand the data, then look at it live</h2>
+      <p>See exactly how these numbers are calculated on the methodology page, or jump straight to the dashboard.</p>
+      <a class="btn btn-primary" href="/app">Open the live dashboard →</a>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div class="footer-grid">
+        <a class="logo" href="/">Quantro<span>.</span></a>
+        <div class="footer-links">
+          <a href="/#features">Features</a>
+          <a href="/methodology/">Methodology</a>
+          <a href="/pricing/">Pricing</a>
+          <a href="/faq/">FAQ</a>
+          <a href="/legal/">Legal &amp; disclaimer</a>
+          <a href="/app">Dashboard</a>
+        </div>
+      </div>
+      <div class="footer-fine">
+        Quantro provides options positioning data for informational purposes only. Nothing here is investment advice, a recommendation, or a solicitation to buy or sell any security or derivative. Options trading involves substantial risk of loss.
+      </div>
+    </div>
+  </footer>
+
+  <script type="module">
+    import { renderAccountWidget } from "/auth-client.js";
+    renderAccountWidget(document.getElementById("account-widget"));
+  </script>
+</body>
+</html>
