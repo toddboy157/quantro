@@ -58,8 +58,28 @@ _refresh_task: Optional[asyncio.Task] = None
 
 async def _refresh_loop():
     global _provider, _store
-    _provider = get_provider(config.DATA_PROVIDER, underlyings=config.UNDERLYINGS)
-    _store = SnapshotStore(config.DB_PATH)
+    # This init step used to be able to fail totally silently: asyncio.
+    # create_task() is fire-and-forget, so an exception raised here (e.g. a
+    # bad DATA_PROVIDER, a missing/invalid API key, a DB_PATH the volume
+    # can't write to yet) used to kill this whole coroutine with nothing
+    # printed anywhere - _latest and _errors both stayed empty forever, and
+    # every /api/gex/<symbol> call just returned a generic "not ready yet,
+    # try again shortly" 503 with no way to tell what actually went wrong.
+    # Retrying with the same cadence as the main loop (rather than giving up
+    # after one attempt) also means a transient problem at boot - the
+    # volume mounting a beat late, a flaky first request to the provider -
+    # heals itself on its own instead of requiring a manual redeploy.
+    while _provider is None or _store is None:
+        try:
+            _provider = get_provider(config.DATA_PROVIDER, underlyings=config.UNDERLYINGS)
+            _store = SnapshotStore(config.DB_PATH)
+        except Exception as exc:
+            log.exception("Refresh loop failed to start (provider/store init) - retrying in %ss", config.REFRESH_INTERVAL_SECONDS)
+            for symbol in config.UNDERLYINGS:
+                _errors[symbol] = f"data refresh never started: {exc}"
+            _provider = None
+            _store = None
+            await asyncio.sleep(config.REFRESH_INTERVAL_SECONDS)
     log.info(
         "Starting refresh loop: provider=%s underlyings=%s interval=%ss",
         config.DATA_PROVIDER, config.UNDERLYINGS, config.REFRESH_INTERVAL_SECONDS,
@@ -77,6 +97,20 @@ async def _refresh_loop():
                 log.exception("Failed to refresh %s", symbol)
                 _errors[symbol] = str(exc)
         await asyncio.sleep(config.REFRESH_INTERVAL_SECONDS)
+
+
+def _log_refresh_task_result(task: "asyncio.Task") -> None:
+    """Belt-and-braces alongside the try/except inside _refresh_loop itself:
+    if that loop ever exits with an exception anyway (a bug in this function,
+    not just the provider/store init this was originally written for), this
+    guarantees it's logged instead of vanishing the way asyncio.create_task's
+    fire-and-forget tasks otherwise can - see the loop's own comment for the
+    silent-503 bug this class of failure caused."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        log.error("Refresh loop task ended unexpectedly", exc_info=exc)
 
 
 # --------------------------------------------------------------------------
@@ -193,7 +227,17 @@ async def get_candles(request):
 
 
 async def health(request):
-    return JSONResponse({"status": "ok", "time": time.time(), "tracking": list(_latest.keys())})
+    # `errors` surfaces whatever the background refresh loop last hit per
+    # symbol (including "data refresh never started: ..." if the loop's
+    # provider/store init is failing) directly in this JSON response, so
+    # diagnosing a stuck "not ready yet" symbol doesn't require digging
+    # through Railway's log viewer at all - just open /api/health.
+    return JSONResponse({
+        "status": "ok",
+        "time": time.time(),
+        "tracking": list(_latest.keys()),
+        "errors": _errors,
+    })
 
 
 async def redirect_to_app(request):
@@ -307,6 +351,7 @@ async def lifespan(app: Starlette):
     global _refresh_task, _accounts
     _accounts = AccountStore(config.DB_PATH)
     _refresh_task = asyncio.create_task(_refresh_loop())
+    _refresh_task.add_done_callback(_log_refresh_task_result)
     try:
         yield
     finally:
