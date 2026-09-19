@@ -167,14 +167,21 @@ nav {
   color: var(--text-dim);
 }
 
-.preview-card .preview-top .live-badge {
+.live-badge {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  color: var(--green);
+  font-size: 12.5px;
   font-weight: 600;
+  color: var(--text-dim);
 }
-.preview-card .preview-top .live-badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 6px var(--green); }
+.live-badge::before {
+  content: "";
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--text-dim);
+}
+.live-badge.is-live { color: var(--green); }
+.live-badge.is-live::before { background: var(--green); box-shadow: 0 0 6px var(--green); }
 
 .preview-grid {
   display: grid;
@@ -194,11 +201,42 @@ nav {
 .preview-grid .pcard .v.neg { color: var(--red); }
 
 .preview-chart {
-  height: 160px;
+  height: 320px;
   border-radius: 8px;
   background: var(--bg-alt);
   border: 1px solid var(--panel-border);
+  overflow: hidden;
 }
+
+/* ---------- live chart containers (shared with the real dashboard's charts.js renderers) ---------- */
+
+.chart-box { width: 100%; }
+.chart-box svg text { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+.chart-box-map { height: 420px; }
+
+/* ---------- Pulse / Terrain live section ---------- */
+
+.ptmap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(420px, 1fr));
+  gap: 20px;
+}
+.ptmap-card {
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 22px;
+}
+.ptmap-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.ptmap-top h3 { font-size: 18px; margin: 0 0 6px; }
+.ptmap-top p { font-size: 13.5px; color: var(--text-dim); margin: 0; max-width: 40ch; }
+.ptmap-top .live-badge { flex-shrink: 0; margin-top: 3px; }
 
 /* ---------- sections ---------- */
 
