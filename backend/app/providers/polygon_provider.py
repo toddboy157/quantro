@@ -64,7 +64,7 @@ BASE_URL = "https://api.massive.com"
 # runs out for some other reason), this raises a specific, diagnosable error
 # ("stopped after N pages") well before that outer timeout would just report
 # a generic "timed out."
-MAX_CHAIN_PAGES = 100
+MAX_CHAIN_PAGES = 100  # unchanged this round - see get_chain()'s comment on why hitting this cap is no longer treated as a failure
 
 # Polygon/Massive's index tickers are prefixed with "I:" in most v3 endpoints
 # (e.g. I:SPX), while ETFs/equities use the bare ticker (SPY, AAPL, ...).
@@ -150,11 +150,34 @@ class PolygonOptionsProvider(OptionsDataProvider):
         while url:
             page_count += 1
             if page_count > MAX_CHAIN_PAGES:
-                raise RuntimeError(
-                    f"{ticker}: stopped after {MAX_CHAIN_PAGES} pages ({len(contracts)} contracts so far) "
-                    "without running out of next_url or hitting the zero-yield-page limit - "
-                    "treating this as a pagination bug/runaway response rather than looping forever."
+                # Round 3 of live testing: neither a null next_url, a
+                # literally-empty results page, nor three consecutive
+                # zero-usable-contract pages ever fired for SPX/SPY/QQQ
+                # within 100 pages - the error text (previously raised here)
+                # came back byte-for-byte identical across all three test
+                # runs except for a slowly creeping contract count, meaning
+                # real, valid, non-duplicate contracts were still trickling
+                # in, just too sparsely to ever hit three zero-yield pages in
+                # a row. This vendor/plan combination apparently has no clean
+                # "I'm done" signal at all for these larger chains. Treating
+                # the page cap itself as a hard failure meant every single
+                # refresh cycle for these symbols discarded everything it had
+                # already fetched rather than ever computing GEX from it.
+                # Given three different completion heuristics have now been
+                # tried and disproven live, the pragmatic fix is to stop
+                # trying to detect "done" and just use whatever was collected
+                # by the cap - real contracts, most likely representing (or
+                # very close to) this plan's actual entitled chain depth -
+                # instead of erroring out forever. Logged as a warning (not
+                # silently) so this is still visible and revisitable if a
+                # higher tier or a vendor fix ever changes the behavior.
+                log.warning(
+                    "%s: stopped after %d pages (%d contracts collected) without a clean "
+                    "end-of-chain signal from the vendor - using what was collected for this "
+                    "refresh instead of discarding it",
+                    ticker, MAX_CHAIN_PAGES, len(contracts),
                 )
+                break
             resp = await self._client.get(url, params=params)
             resp.raise_for_status()
             payload = resp.json()
