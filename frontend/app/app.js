@@ -1,7 +1,7 @@
 // Polling-based "live" client. See backend/app/server.py for why this
 // polls instead of using a WebSocket in this build environment, and what
 // the swap to a push socket would look like later.
-import { renderZeroCenteredBarChart, renderDualLineChart, renderCandlestickWithWalls, renderGexHeatmap } from "./charts.js";
+import { renderZeroCenteredBarChart, renderDualLineChart, renderCandlestickWithWalls, renderGexHeatmap, nearTermCells } from "./charts.js";
 
 const POLL_MS = 2000;
 
@@ -19,6 +19,7 @@ const els = {
   zerogamma: document.getElementById("v-zerogamma"),
   chartCandles: document.getElementById("chart-candles"),
   chartByStrike: document.getElementById("chart-bystrike"),
+  chartLiveMap: document.getElementById("chart-livemap"),
   chartByExpiry: document.getElementById("chart-byexpiry"),
   chartHistory: document.getElementById("chart-history"),
   dataBadge: document.getElementById("data-badge"),
@@ -111,7 +112,24 @@ function updateByStrikeChart(result) {
 }
 
 function updateExpiryMap(result) {
-  renderGexHeatmap(els.chartByExpiry, result.by_strike_expiry, result.spot, { valueFormatter: fmtMoney });
+  renderGexHeatmap(els.chartByExpiry, result.by_strike_expiry, result.spot, {
+    valueFormatter: fmtMoney,
+    callWall: result.call_wall,
+    putWall: result.put_wall,
+  });
+}
+
+function updateLiveMap(result) {
+  // Zoomed to the nearest two expiries and strikes within ~6% of spot - the
+  // "what's mechanical right now" companion to the full multi-expiry map
+  // above, refreshed every poll tick just like the rest of the dashboard.
+  const zoomed = nearTermCells(result.by_strike_expiry, result.spot, { maxExpiries: 2, strikeWindowPct: 0.06 });
+  renderGexHeatmap(els.chartLiveMap, zoomed, result.spot, {
+    valueFormatter: fmtMoney,
+    callWall: result.call_wall,
+    putWall: result.put_wall,
+    maxStrikeLabels: 30,
+  });
 }
 
 function updateCandlesChart(candles) {
@@ -169,6 +187,7 @@ async function pollOnce() {
 
     updateSummary(result);
     updateCandlesChart(candlesData.candles);
+    updateLiveMap(result);
     updateByStrikeChart(result);
     updateExpiryMap(result);
     updateHistoryChart(histData.history);
