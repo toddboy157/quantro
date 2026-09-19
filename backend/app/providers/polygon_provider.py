@@ -64,7 +64,20 @@ def _to_polygon_ticker(underlying: str) -> str:
 
 
 class PolygonOptionsProvider(OptionsDataProvider):
-    def __init__(self, api_key: Optional[str] = None, timeout: float = 10.0):
+    def __init__(self, api_key: Optional[str] = None, timeout: float = 10.0, **_ignored):
+        # get_provider() (providers/__init__.py) calls every provider the
+        # same way, passing underlyings=config.UNDERLYINGS - MockOptionsProvider
+        # needs that list up front to pre-seed simulated per-symbol state, but
+        # this connector fetches one symbol's real chain per get_chain() call
+        # and has no use for the full list. Accepting and discarding it here
+        # (via **_ignored) keeps the factory call site uniform instead of
+        # needing a provider-specific branch. This was previously a hard
+        # TypeError - "unexpected keyword argument 'underlyings'" - raised
+        # during the background refresh loop's startup, which (before the
+        # accompanying server.py fix) failed completely silently: nothing
+        # logged, every /api/gex/<symbol> stuck on a permanent, indistinguishable
+        # "not ready yet" 503. DATA_PROVIDER=polygon was therefore never able
+        # to actually serve live data in production until this fix.
         key = api_key or POLYGON_API_KEY
         if not key:
             raise RuntimeError(
