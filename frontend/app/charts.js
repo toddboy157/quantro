@@ -203,6 +203,46 @@ export function renderCandlestickWithWalls(container, candles, {
 let _heatmapGradientCounter = 0;
 
 /**
+ * Collapses adjacent strikes into a fixed number of price bands, summing
+ * net_gex within each band. Found live (Round 10, comparing this against
+ * Zerano's screenshots): SPY's real chain lists strikes in $1 increments
+ * near the money - 100+ distinct rows for a single expiry - which, crammed
+ * into one fixed-height box, gives each row only 1-2 pixels of height. The
+ * per-row color IS varying correctly by then (confirmed against the real
+ * captured numbers), it's just too thin a strip to perceive as texture, so
+ * the whole grid still reads as flat, blocky bands even after the color-
+ * scale fix. Zerano's own screenshots show roughly 20-40 rows per panel,
+ * not 100+. Grouping every N *adjacent* strikes (by sort order, not by
+ * fixed dollar width) into one row keeps the dense near-the-money area
+ * meaningfully thick while leaving the already-sparse far-OTM strikes close
+ * to 1:1, and strengthens the real signal instead of hiding it (ten
+ * strikes each worth $2-5M sum into one $30M row, which is far easier to
+ * see against a $537M peak than any one of them alone was).
+ */
+function _bucketCellsByStrike(cells, maxRows) {
+  const strikesAsc = [...new Set(cells.map((c) => c.strike))].sort((a, b) => a - b);
+  if (strikesAsc.length <= maxRows) return cells;
+
+  const bucketSize = Math.ceil(strikesAsc.length / maxRows);
+  const strikeToBand = new Map(); // strike -> { rep, lo, hi }
+  for (let i = 0; i < strikesAsc.length; i += bucketSize) {
+    const group = strikesAsc.slice(i, i + bucketSize);
+    const band = { rep: (group[0] + group[group.length - 1]) / 2, lo: group[0], hi: group[group.length - 1] };
+    group.forEach((s) => strikeToBand.set(s, band));
+  }
+
+  const agg = new Map(); // "expiry|rep" -> { expiry_days, strike, net_gex, lo, hi }
+  cells.forEach((c) => {
+    const band = strikeToBand.get(c.strike);
+    const key = `${c.expiry_days}|${band.rep}`;
+    const existing = agg.get(key);
+    if (existing) existing.net_gex += c.net_gex;
+    else agg.set(key, { expiry_days: c.expiry_days, strike: band.rep, net_gex: c.net_gex, lo: band.lo, hi: band.hi });
+  });
+  return [...agg.values()];
+}
+
+/**
  * Strike x expiry "dealer positioning map" heatmap. Rows are strikes
  * (highest at top, like a depth-of-book ladder), columns are expiry
  * buckets (nearest-dated first), and each cell's fill encodes that
@@ -221,7 +261,7 @@ let _heatmapGradientCounter = 0;
  * number, not just "darker = more."
  */
 export function renderGexHeatmap(container, cells, spot, {
-  valueFormatter = (v) => v, maxStrikeLabels = 22, callWall = null, putWall = null, showLegend = true,
+  valueFormatter = (v) => v, maxStrikeLabels = 22, maxRows = 40, callWall = null, putWall = null, showLegend = true,
 } = {}) {
   clear(container);
   const width = 1000;
@@ -240,6 +280,9 @@ export function renderGexHeatmap(container, cells, spot, {
     container.appendChild(svg);
     return;
   }
+
+  cells = _bucketCellsByStrike(cells, maxRows);
+  const bandByStrike = new Map(cells.map((c) => [c.strike, { lo: c.lo, hi: c.hi }]));
 
   const expiries = [...new Set(cells.map((c) => c.expiry_days))].sort((a, b) => a - b);
   // Highest strike at top of the grid (row 0), matching how a price ladder reads.
@@ -268,7 +311,16 @@ export function renderGexHeatmap(container, cells, spot, {
     return v >= 0 ? `rgba(46, 207, 122, ${alpha.toFixed(3)})` : `rgba(239, 74, 95, ${alpha.toFixed(3)})`;
   }
 
-  // Nearest strike to spot, for the highlighted row.
+  // Human-readable row label: a single strike shows as-is, a bucketed band
+  // shows as its price range so it's clear the row represents more than one
+  // real strike.
+  function strikeLabel(strike) {
+    const band = bandByStrike.get(strike);
+    if (band && band.lo !== band.hi) return `${band.lo.toLocaleString()}-${band.hi.toLocaleString()}`;
+    return strike.toLocaleString();
+  }
+
+  // Nearest strike (or bucketed band) to spot, for the highlighted row.
   let spotStrike = null;
   if (spot != null && strikes.length > 0) {
     spotStrike = strikes.reduce((best, s) => (Math.abs(s - spot) < Math.abs(best - spot) ? s : best));
@@ -284,7 +336,7 @@ export function renderGexHeatmap(container, cells, spot, {
         fill: colorFor(v),
       });
       const title = svgEl("title");
-      title.textContent = `${strike.toLocaleString()} strike · ${Math.round(expiry)}d out: ${valueFormatter(v)}`;
+      title.textContent = `${strikeLabel(strike)} strike · ${Math.round(expiry)}d out: ${valueFormatter(v)}`;
       rect.appendChild(title);
       svg.appendChild(rect);
     });
@@ -293,13 +345,16 @@ export function renderGexHeatmap(container, cells, spot, {
   // Callouts: spot, call wall, put wall - each a colored outline across the
   // full row plus a label. If two land on the same strike (e.g. spot sitting
   // right at the put wall), merge into one outline/label instead of drawing
-  // twice on top of each other.
+  // twice on top of each other. Matches to the NEAREST row rather than
+  // requiring an exact strike match, since a bucketed row's "strike" is a
+  // band midpoint that a real wall/spot value will rarely land on exactly.
   const callouts = new Map(); // strike -> { color, parts: [text, ...] }
   function addCallout(strike, color, text) {
-    if (strike === null || strike === undefined || !strikes.includes(strike)) return;
-    const existing = callouts.get(strike);
+    if (strike === null || strike === undefined || strikes.length === 0) return;
+    const nearest = strikes.reduce((best, s) => (Math.abs(s - strike) < Math.abs(best - strike) ? s : best));
+    const existing = callouts.get(nearest);
     if (existing) existing.parts.push(text);
-    else callouts.set(strike, { color, parts: [text] });
+    else callouts.set(nearest, { color, parts: [text] });
   }
   addCallout(callWall, "#2ecf7a", `call wall ${callWall != null ? callWall.toLocaleString() : ""}`);
   addCallout(putWall, "#ef4a5f", `put wall ${putWall != null ? putWall.toLocaleString() : ""}`);
@@ -324,7 +379,7 @@ export function renderGexHeatmap(container, cells, spot, {
     if (rowI % rowStride !== 0) return;
     const y = padT + rowI * rowH + rowH / 2 + 4;
     const t = svgEl("text", { x: padL - 8, y, fill: "#8791a8", "font-size": 10, "text-anchor": "end" });
-    t.textContent = strike.toLocaleString();
+    t.textContent = strikeLabel(strike);
     svg.appendChild(t);
   });
 
