@@ -28,6 +28,20 @@ const els = {
 
 let missedTicks = 0;
 
+// Futures-style index symbols quote in fixed $0.25 increments (the real ES/NQ
+// tick size; SPX is priced/quoted the same way here) - showing something
+// like "6612.33" for one of these is never a real, tradable price. Individual
+// stocks (AAPL, TSLA, etc.) trade in pennies and are left untouched. This
+// only rounds the DISPLAYED number - the underlying spot/candle values used
+// for GEX math are never touched - so every price shown for these symbols
+// (chart axis labels, OHLC tooltips, the summary row) reads as a real tick.
+const FUTURES_TICK_SYMBOLS = new Set(["SPX", "ES", "NQ"]);
+const FUTURES_TICK_SIZE = 0.25;
+
+function roundToTick(n, symbol) {
+  return FUTURES_TICK_SYMBOLS.has(symbol) ? Math.round(n / FUTURES_TICK_SIZE) * FUTURES_TICK_SIZE : n;
+}
+
 function fmtMoney(n) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
   const abs = Math.abs(n);
@@ -40,7 +54,8 @@ function fmtMoney(n) {
 
 function fmtPrice(n) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const symbol = els.select ? els.select.value : null;
+  return roundToTick(n, symbol).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 function setValueClass(el, n) {
@@ -132,8 +147,14 @@ function updateLiveMap(result) {
   });
 }
 
-function updateCandlesChart(candles) {
-  renderCandlestickWithWalls(els.chartCandles, candles, { priceFormatter: fmtPrice });
+function updateCandlesChart(candles, result) {
+  // result.by_strike is the same [{strike, net_gex}, ...] array the
+  // "GEX by strike" bar chart uses below - reused here to draw the
+  // zerano.club-style dealer positioning dot-matrix directly on the candles.
+  renderCandlestickWithWalls(els.chartCandles, candles, {
+    priceFormatter: fmtPrice,
+    strikeExposure: result ? result.by_strike : null,
+  });
 }
 
 function updateHistoryChart(history) {
@@ -186,7 +207,7 @@ async function pollOnce() {
     const candlesData = candlesRes.ok ? await candlesRes.json() : { candles: [] };
 
     updateSummary(result);
-    updateCandlesChart(candlesData.candles);
+    updateCandlesChart(candlesData.candles, result);
     updateLiveMap(result);
     updateByStrikeChart(result);
     updateExpiryMap(result);
