@@ -43,6 +43,21 @@ const els = {
 let missedTicks = 0;
 let liveTimer = null;
 
+// See the matching comment in frontend/app/app.js: futures-style index
+// symbols (SPX here; ES/NQ if they're ever added) quote in fixed $0.25
+// increments, so a raw interpolated/simulated value like "6612.33" is never
+// actually a real tradable price for them. This only rounds what's DISPLAYED
+// - summary row, ladder, and every price shown on the candlestick chart
+// (axis labels, OHLC tooltips, wall/zero-gamma tags) - never the underlying
+// spot/candle values the GEX math itself uses. Individual stocks keep their
+// normal penny pricing.
+const FUTURES_TICK_SYMBOLS = new Set(["SPX", "ES", "NQ"]);
+const FUTURES_TICK_SIZE = 0.25;
+
+function roundToTick(n, symbol) {
+  return FUTURES_TICK_SYMBOLS.has(symbol) ? Math.round(n / FUTURES_TICK_SIZE) * FUTURES_TICK_SIZE : n;
+}
+
 function fmtMoney(n) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
   const abs = Math.abs(n);
@@ -55,7 +70,8 @@ function fmtMoney(n) {
 
 function fmtPrice(n) {
   if (n === null || n === undefined || Number.isNaN(n)) return "—";
-  return n.toLocaleString(undefined, { maximumFractionDigits: 2 });
+  const symbol = els.select ? els.select.value : null;
+  return roundToTick(n, symbol).toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
 function setValueClass(el, n) {
@@ -163,8 +179,28 @@ function renderPulseTerrain(moment) {
   });
 }
 
-function renderChart(candles, playheadIndex) {
-  renderCandlestickWithWalls(els.chartCandles, candles, { priceFormatter: fmtPrice, playheadIndex });
+// Live mode's `moment` already has a flat by_strike array (same shape the
+// main dashboard's bar chart uses); Replay's stored snapshots only carry
+// the full by_strike_expiry grid (see storage.py session_replay), so this
+// sums that grid down to one net_gex per strike - the same aggregation
+// gex_engine.py itself does server-side - to feed the candlestick chart's
+// dealer-positioning dot-matrix either way.
+function deriveByStrike(moment) {
+  if (!moment) return null;
+  if (moment.by_strike) return moment.by_strike;
+  const cells = moment.by_strike_expiry;
+  if (!cells || cells.length === 0) return null;
+  const sums = new Map();
+  cells.forEach((c) => sums.set(c.strike, (sums.get(c.strike) || 0) + c.net_gex));
+  return [...sums.entries()].map(([strike, net_gex]) => ({ strike, net_gex }));
+}
+
+function renderChart(candles, playheadIndex, moment) {
+  renderCandlestickWithWalls(els.chartCandles, candles, {
+    priceFormatter: fmtPrice,
+    playheadIndex,
+    strikeExposure: deriveByStrike(moment),
+  });
 }
 
 // -------------------------------------------------------------------------
@@ -210,7 +246,7 @@ async function pollLiveOnce() {
     renderSummary(result);
     renderLadder(result);
     renderPulseTerrain(result);
-    renderChart(candlesData.candles, null); // no playhead needed live - the rightmost candle IS "now"
+    renderChart(candlesData.candles, null, result); // no playhead needed live - the rightmost candle IS "now"
     setStatus(true);
   } catch (err) {
     console.error(err);
@@ -303,7 +339,7 @@ function applyReplayIndex(idx) {
   renderLadder(moment);
   renderPulseTerrain(moment);
   const playheadIndex = nearestCandleIndex(state.replay.candles, moment.timestamp);
-  renderChart(state.replay.candles, playheadIndex);
+  renderChart(state.replay.candles, playheadIndex, moment);
 }
 
 function clearMoment() {
