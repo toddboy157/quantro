@@ -15,16 +15,29 @@ import { renderGexHeatmap, nearTermCells } from "/app/charts.js";
 const SYMBOL = "SPY";
 const POLL_MS = 4000; // gentler than the dashboard's own 2s cadence - this is a marketing preview, not a trading tool
 
+// See the matching comment in frontend/app/app.js: futures-style index
+// symbols (SPX; ES/NQ if they're ever added) quote in fixed $0.25
+// increments. SPY itself is an ETF (penny pricing), so this is a no-op today
+// given SYMBOL is hardcoded above - kept here so the hero stats stay correct
+// automatically if this widget is ever pointed at SPX instead.
+const FUTURES_TICK_SYMBOLS = new Set(["SPX", "ES", "NQ"]);
+const FUTURES_TICK_SIZE = 0.25;
+
+function roundToTick(n, symbol) {
+  return FUTURES_TICK_SYMBOLS.has(symbol) ? Math.round(n / FUTURES_TICK_SIZE) * FUTURES_TICK_SIZE : n;
+}
+
 function fmtMoney(v) {
   const abs = Math.abs(v);
   const sign = v < 0 ? "-" : "";
   if (abs >= 1e9) return `${sign}$${(abs / 1e9).toFixed(2)}B`;
   if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(1)}M`;
+  if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(0)}K`;
   return `${sign}$${abs.toFixed(0)}`;
 }
 
 function fmtPrice(v) {
-  return v == null ? "—" : v.toFixed(2);
+  return v == null ? "—" : roundToTick(v, SYMBOL).toFixed(2);
 }
 
 function setStat(id, text, cls) {
