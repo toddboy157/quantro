@@ -84,12 +84,25 @@ export function renderZeroCenteredBarChart(container, labels, values, { valueFor
  * signature Zerano/Skylit "dealer positioning vs. price" visual. Each
  * candle is one time bucket of spot ticks (see storage.py SnapshotStore.candles);
  * green body = close >= open, red = close < open, thin wick = high/low.
+ *
+ * When `strikeExposure` (a [{strike, net_gex}, ...] by-strike array - the
+ * same shape as the "GEX by strike" bar chart's data) is passed, every
+ * strike within the chart's current visible price range is also drawn as a
+ * horizontal band of small dots spanning the full width, behind the
+ * candles - directly matching zerano.club's own "Chart" feature (dealer
+ * walls and key levels drawn on the candles you already read, not a
+ * separate panel). Dot spacing (denser = more dots per pixel) encodes each
+ * strike's |net_gex| by PERCENTILE RANK among the currently-visible strikes
+ * - see renderGexHeatmap's doc comment for why rank beats a raw fraction of
+ * the largest value - and the call wall / put wall strikes are drawn in
+ * gold instead of purple so they read as the two standout levels.
  */
 export function renderCandlestickWithWalls(container, candles, {
   priceFormatter = (v) => v.toFixed(2),
   timeFormatter = (ts) => new Date(ts * 1000).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
   maxLabels = 10,
   playheadIndex = null,
+  strikeExposure = null,
 } = {}) {
   clear(container);
   const width = 1000, height = 340;
@@ -140,6 +153,40 @@ export function renderCandlestickWithWalls(container, candles, {
     svg.appendChild(t);
   }
 
+  // Dealer positioning dot-matrix, drawn behind the candles so the candle
+  // bodies read on top of it rather than the other way around - see the
+  // function doc above for what drives each row's density and color.
+  if (strikeExposure && strikeExposure.length) {
+    const visibleRows = strikeExposure.filter((r) => r.net_gex !== 0 && r.strike >= vMin && r.strike <= vMax);
+    if (visibleRows.length) {
+      const sortedAbs = visibleRows.map((r) => Math.abs(r.net_gex)).sort((a, b) => a - b);
+      const rn = sortedAbs.length;
+      function rankOf(v) {
+        if (rn <= 1) return 1;
+        let lo = 0, hi = rn;
+        while (lo < hi) {
+          const mid = (lo + hi) >> 1;
+          if (sortedAbs[mid] < v) lo = mid + 1; else hi = mid;
+        }
+        return lo / (rn - 1);
+      }
+      const dotLayer = svgEl("g", {});
+      visibleRows.forEach((r) => {
+        const y = scaleY(r.strike);
+        const isWall = (callWall != null && r.strike === callWall) || (putWall != null && r.strike === putWall);
+        const rank = rankOf(Math.abs(r.net_gex));
+        const gap = 18 - rank * 12; // 18px = sparse/low-magnitude row, 6px = dense/high-magnitude row
+        const dotR = isWall ? 1.7 : 1.2;
+        const color = isWall ? "#f0c24d" : "#8a6cf5";
+        const opacity = (isWall ? 0.85 : 0.22 + rank * 0.55).toFixed(2);
+        for (let x = padL + gap / 2; x < width - padR; x += gap) {
+          dotLayer.appendChild(svgEl("circle", { cx: x, cy: y, r: dotR, fill: color, opacity }));
+        }
+      });
+      svg.appendChild(dotLayer);
+    }
+  }
+
   // candles
   candles.forEach((c, i) => {
     const cx = padL + i * slot + slot / 2;
@@ -157,18 +204,25 @@ export function renderCandlestickWithWalls(container, candles, {
     svg.appendChild(rect);
   });
 
-  // wall / zero-gamma overlay lines, drawn on top of the candles
+  // Wall / zero-gamma labels, drawn on top of the candles. Call wall and put
+  // wall skip the dashed reference line now that the gold dot-matrix row
+  // above already marks those exact levels - a second solid line right on
+  // top of it just buried the dots under itself. Zero gamma isn't a strike
+  // in strikeExposure (it's a derived crossing point, not a real listed
+  // strike), so it still gets its own dashed line as the only way to mark it.
   const overlays = [
-    { value: callWall, color: "#2ecf7a", label: "Call wall" },
-    { value: putWall, color: "#ef4a5f", label: "Put wall" },
-    { value: zeroGamma, color: "#7c8cff", label: "Zero Γ" },
+    { value: callWall, color: "#2ecf7a", label: "Call wall", drawLine: strikeExposure == null },
+    { value: putWall, color: "#ef4a5f", label: "Put wall", drawLine: strikeExposure == null },
+    { value: zeroGamma, color: "#7c8cff", label: "Zero Γ", drawLine: true },
   ];
-  overlays.forEach(({ value, color, label }) => {
+  overlays.forEach(({ value, color, label, drawLine }) => {
     if (value == null) return;
     const y = scaleY(value);
-    svg.appendChild(svgEl("line", {
-      x1: padL, x2: width - padR, y1: y, y2: y, stroke: color, "stroke-width": 1.4, "stroke-dasharray": "6 4",
-    }));
+    if (drawLine) {
+      svg.appendChild(svgEl("line", {
+        x1: padL, x2: width - padR, y1: y, y2: y, stroke: color, "stroke-width": 1.4, "stroke-dasharray": "6 4",
+      }));
+    }
     const tag = svgEl("text", { x: width - padR + 8, y: y + 4, fill: color, "font-size": 10, "text-anchor": "start" });
     tag.textContent = `${label} ${priceFormatter(value)}`;
     svg.appendChild(tag);
