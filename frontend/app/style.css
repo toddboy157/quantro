@@ -254,6 +254,46 @@ main {
   box-shadow: 0 0 0 1px rgba(91, 141, 255, 0.06);
 }
 
+/* Matches the marketing homepage's "Chart" showcase panel exactly (same
+   class names, same color tokens - both stylesheets already define
+   --panel-border/--text-dim/--green with the identical values) so the real
+   dashboard's flagship chart looks like the same product as the homepage
+   preview, not a differently-styled tool - requested directly by Todd after
+   comparing the two side by side. */
+.chart-showcase-panel {
+  border-radius: 14px;
+  padding: 20px;
+}
+.chart-showcase-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-dim);
+  margin-bottom: 16px;
+}
+.chart-box-showcase { height: 480px; }
+
+.live-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-dim);
+}
+.live-badge::before {
+  content: "";
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--text-dim);
+}
+.live-badge.is-live { color: var(--green); }
+.live-badge.is-live::before { background: var(--green); box-shadow: 0 0 6px var(--green); }
+
+@media (max-width: 640px) {
+  .chart-box-showcase { height: 360px; }
+}
+
 .compare-table-wrap { overflow-x: auto; }
 table.compare-table {
   width: 100%;
