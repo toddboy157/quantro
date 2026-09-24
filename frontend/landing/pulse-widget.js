@@ -10,7 +10,7 @@
 // Reuses the exact same rendering code the real dashboard uses
 // (frontend/app/charts.js), imported cross-directory since it's served as
 // a plain static file at /app/charts.js regardless of which page loads it.
-import { renderGexHeatmap, nearTermCells } from "/app/charts.js";
+import { renderGexHeatmap, nearTermCells, renderCandlestickWithWalls } from "/app/charts.js";
 
 const SYMBOL = "SPY";
 const POLL_MS = 4000; // gentler than the dashboard's own 2s cadence - this is a marketing preview, not a trading tool
@@ -75,6 +75,20 @@ function renderTerrain(result) {
   });
 }
 
+function renderChart(result, candles) {
+  // Same reuse pattern as renderPulse/renderTerrain above: the marketing
+  // "Chart" section (Zerano's own showcase feature, matched here) reuses
+  // the exact dashboard rendering code and the same by_strike array the
+  // dot-matrix uses on /app and /app/session/ - this is a real live render
+  // of the same feature, not a separate mockup of it.
+  document.querySelectorAll(".js-chart-candles").forEach((container) => {
+    renderCandlestickWithWalls(container, candles, {
+      priceFormatter: fmtPrice,
+      strikeExposure: result ? result.by_strike : null,
+    });
+  });
+}
+
 function renderHeroStats(result) {
   setStat("hero-spot", fmtPrice(result.spot));
   setStat("hero-netgex", fmtMoney(result.net_gex), result.net_gex >= 0 ? "pos" : "neg");
@@ -92,12 +106,23 @@ function setLiveBadges(live) {
 
 async function poll() {
   try {
-    const resp = await fetch(`/api/gex/${SYMBOL}`);
-    if (!resp.ok) throw new Error(`status ${resp.status}`);
-    const result = await resp.json();
+    const wantsChart = !!document.querySelector(".js-chart-candles");
+    const [gexResp, candlesResp] = await Promise.all([
+      fetch(`/api/gex/${SYMBOL}`),
+      // Only bother fetching candles if this page actually has the chart
+      // panel - the hero/Pulse/Terrain-only pages (methodology, faq, etc.
+      // reuse this same script) shouldn't pay for a request they don't render.
+      wantsChart ? fetch(`/api/candles/${SYMBOL}?bucket_seconds=60&limit=80`) : Promise.resolve(null),
+    ]);
+    if (!gexResp.ok) throw new Error(`status ${gexResp.status}`);
+    const result = await gexResp.json();
     renderHeroStats(result);
     renderPulse(result);
     renderTerrain(result);
+    if (wantsChart) {
+      const candlesData = candlesResp && candlesResp.ok ? await candlesResp.json() : { candles: [] };
+      renderChart(result, candlesData.candles);
+    }
     setLiveBadges(true);
   } catch (err) {
     // Homepage widget failing (e.g. the backend is still warming up right
@@ -109,7 +134,11 @@ async function poll() {
 }
 
 export function initPulseWidgets() {
-  if (!document.querySelector(".js-pulse-heatmap") && !document.querySelector(".js-terrain-heatmap")) return;
+  if (
+    !document.querySelector(".js-pulse-heatmap") &&
+    !document.querySelector(".js-terrain-heatmap") &&
+    !document.querySelector(".js-chart-candles")
+  ) return;
   poll();
   setInterval(poll, POLL_MS);
 }
