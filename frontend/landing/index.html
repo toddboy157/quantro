@@ -1,307 +1,207 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Quantro — Live Dealer Positioning for Index &amp; Equity Options</title>
-  <meta name="description" content="Live dealer gamma walls, GEX/DEX, and zero-gamma flip levels for index and equity options — positioning data only, not trade signals." />
-  <link rel="stylesheet" href="style.css" />
-</head>
-<body>
+// Powers the two live, interactive heatmaps on the marketing homepage
+// (Pulse + Terrain) plus the hero's live stat strip - all from ONE shared
+// poll of /api/gex/<symbol>, since that single response already carries
+// everything both widgets need (spot, walls, and the full by_strike_expiry
+// grid Pulse/Terrain each render a different slice of). /api/gex/<symbol>
+// is already anonymous-accessible for the first FREE_PLAN_UNDERLYING_LIMIT
+// symbols (see backend/app/server.py _allowed_underlyings) - SPY is inside
+// that free window, so this needs no login and no backend changes.
+//
+// Reuses the exact same rendering code the real dashboard uses
+// (frontend/app/charts.js), imported cross-directory since it's served as
+// a plain static file at /app/charts.js regardless of which page loads it.
+import { renderGexHeatmap, nearTermCells, renderCandlestickWithWalls } from "/app/charts.js";
 
-  <nav class="wrap">
-    <a class="logo" href="/">Quantro<span>.</span></a>
-    <div class="nav-links">
-      <a href="#features">Features</a>
-      <a href="/methodology/">Methodology</a>
-      <a href="/pricing/">Pricing</a>
-      <a href="/faq/">FAQ</a>
-      <span id="account-widget"></span>
-      <a class="btn btn-ghost" href="/app">Open dashboard</a>
-    </div>
-  </nav>
+const SYMBOL = "SPY";
+const POLL_MS = 4000; // gentler than the dashboard's own 2s cadence - this is a marketing preview, not a trading tool
 
-  <header class="hero">
-    <div class="wrap">
-      <span class="eyebrow"><span class="dot"></span> Live positioning · updated every 2s</span>
-      <h1>See where dealers are<br /><span class="accent">pinned, before price gets there.</span></h1>
-      <p class="lede">
-        Quantro tracks live dealer gamma exposure across index and equity options —
-        call walls, put walls, and the zero-gamma flip — so you can see the market's
-        positioning structure in real time.
-      </p>
-      <div class="hero-ctas">
-        <a class="btn btn-primary" href="/app">Open the live dashboard</a>
-        <a class="btn btn-ghost" href="#how-it-works">How it works</a>
-      </div>
-      <div class="hero-note">Positioning data only — not trade signals or investment advice.</div>
+// See the matching comment in frontend/app/app.js: futures-style index
+// symbols (SPX; ES/NQ if they're ever added) quote in fixed $0.25
+// increments. SPY itself is an ETF (penny pricing), so this is a no-op today
+// given SYMBOL is hardcoded above - kept here so the hero stats stay correct
+// automatically if this widget is ever pointed at SPX instead.
+const FUTURES_TICK_SYMBOLS = new Set(["SPX", "ES", "NQ"]);
+const FUTURES_TICK_SIZE = 0.25;
 
-      <div class="preview-card">
-        <div class="preview-top">
-          <span>SPY · Dealer Positioning</span>
-          <span class="live-badge js-live-badge">connecting…</span>
-        </div>
-        <div class="preview-grid">
-          <div class="pcard"><div class="l">Spot</div><div class="v" id="hero-spot">—</div></div>
-          <div class="pcard"><div class="l">Net GEX</div><div class="v" id="hero-netgex">—</div></div>
-          <div class="pcard"><div class="l">Call Wall</div><div class="v" id="hero-callwall">—</div></div>
-          <div class="pcard"><div class="l">Put Wall</div><div class="v" id="hero-putwall">—</div></div>
-          <div class="pcard"><div class="l">Zero Gamma</div><div class="v" id="hero-zerogamma">—</div></div>
-        </div>
-        <div class="preview-chart chart-box js-pulse-heatmap"></div>
-      </div>
-    </div>
-  </header>
+function roundToTick(n, symbol) {
+  return FUTURES_TICK_SYMBOLS.has(symbol) ? Math.round(n / FUTURES_TICK_SIZE) * FUTURES_TICK_SIZE : n;
+}
 
-  <section id="pulse-terrain">
-    <div class="wrap">
-      <div class="section-head">
-        <div class="kicker">Live, right now</div>
-        <h2>One session. Two live surfaces.</h2>
-        <p>The same feed, read two ways — what's mechanical right now, and the full structure it sits inside. Both are pulling real positioning for SPY as you read this, not a mockup.</p>
-      </div>
-      <div class="ptmap-grid">
-        <div class="ptmap-card">
-          <div class="ptmap-top">
-            <div>
-              <h3>Pulse</h3>
-              <p>The nearest two expiries, strikes close to spot — the exposure actually in play for this session.</p>
-            </div>
-            <span class="live-badge js-live-badge">connecting…</span>
-          </div>
-          <div class="chart-box chart-box-map js-pulse-heatmap"></div>
-        </div>
-        <div class="ptmap-card">
-          <div class="ptmap-top">
-            <div>
-              <h3>Terrain</h3>
-              <p>Every strike across the full expiry term structure — the shape of dealer exposure beyond just today.</p>
-            </div>
-            <span class="live-badge js-live-badge">connecting…</span>
-          </div>
-          <div class="chart-box chart-box-map js-terrain-heatmap"></div>
-        </div>
-      </div>
-    </div>
-  </section>
+function fmtMoney(v) {
+  const abs = Math.abs(v);
+  const sign = v < 0 ? "-" : "";
+  if (abs >= 1e9) return `${sign}$${(abs / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(1)}M`;
+  if (abs >= 1e3) return `${sign}$${(abs / 1e3).toFixed(0)}K`;
+  return `${sign}$${abs.toFixed(0)}`;
+}
 
-  <section id="session-screen">
-    <div class="wrap">
-      <div class="chart-showcase-grid">
-        <div class="chart-showcase-copy">
-          <div class="kicker">Charting</div>
-          <h2>Chart</h2>
-          <p>A full session on one screen — drawing the dealer walls and key levels on the candles you already read.</p>
-          <ol class="chart-numbered-list">
-            <li>
-              <span class="num-label">01</span>
-              <div>
-                <h3>Call and put walls</h3>
-                <p>Where dealers have to buy and sell next — on the candles, not a separate panel.</p>
-              </div>
-            </li>
-            <li>
-              <span class="num-label">02</span>
-              <div>
-                <h3>Spot, flip, key strikes</h3>
-                <p>The ladder and the chart stay on one time axis.</p>
-              </div>
-            </li>
-            <li>
-              <span class="num-label">03</span>
-              <div>
-                <h3>Replay a closed day</h3>
-                <p>History on request. It does not block the live minute.</p>
-              </div>
-            </li>
-            <li>
-              <span class="num-label">04</span>
-              <div>
-                <h3>Same clock as the heat</h3>
-                <p>Pulse and Terrain tick with the session you're looking at.</p>
-              </div>
-            </li>
-          </ol>
-          <a class="btn btn-primary" href="/app/session/">Open the live dashboard <span aria-hidden="true">→</span></a>
-        </div>
-        <div class="chart-showcase-panel">
-          <div class="chart-showcase-top">
-            <span>SPY · Dealer Positioning</span>
-            <span class="live-badge js-live-badge">connecting…</span>
-          </div>
-          <div class="chart-box chart-box-showcase js-chart-candles"></div>
-        </div>
-      </div>
-    </div>
-  </section>
+function fmtPrice(v) {
+  return v == null ? "—" : roundToTick(v, SYMBOL).toFixed(2);
+}
 
-  <section id="features">
-    <div class="wrap">
-      <div class="section-head">
-        <div class="kicker">What you get</div>
-        <h2>The full positioning picture, live</h2>
-        <p>Everything a dealer's hedging book implies about where price gets sticky, magnetized, or unstable — computed fresh from the options chain, not backfitted.</p>
-      </div>
-      <div class="feature-grid">
-        <div class="feature-card">
-          <div class="icon">▦</div>
-          <h3>Dealer walls</h3>
-          <p>The call wall and put wall — strikes where dealer gamma exposure peaks — mark the levels price tends to pin against or bounce from intraday.</p>
-        </div>
-        <div class="feature-card">
-          <div class="icon">Σ</div>
-          <h3>GEX &amp; DEX by strike and expiry</h3>
-          <p>Net gamma and delta exposure broken out across every strike and expiration in the chain — this is the data Pulse and Terrain are built on, not just the front month.</p>
-        </div>
-        <div class="feature-card">
-          <div class="icon">◎</div>
-          <h3>Zero-gamma flip level</h3>
-          <p>The spot price where net dealer gamma crosses from positive to negative — the line between a market that dampens moves and one that amplifies them.</p>
-        </div>
-        <div class="feature-card">
-          <div class="icon">⟳</div>
-          <h3>Live, not end-of-day</h3>
-          <p>Positioning recomputed on a live refresh cycle across your whole underlying universe — index and equity options side by side.</p>
-        </div>
-        <div class="feature-card">
-          <div class="icon">▤</div>
-          <h3>Price chart with walls overlaid</h3>
-          <p>A candlestick view of spot with call wall, put wall, and zero-gamma drawn directly on the chart, so structure and price move together.</p>
-        </div>
-        <div class="feature-card">
-          <div class="icon">⌗</div>
-          <h3>Built for a real universe</h3>
-          <p>SPX, SPY, QQQ, and single names side by side, with the same calc engine and data pipeline behind every one of them.</p>
-        </div>
-        <div class="feature-card">
-          <div class="icon">⇄</div>
-          <h3>Multi-underlying compare</h3>
-          <p>Line up net GEX, call wall, put wall, and zero-gamma across your whole watchlist in one table and chart — see which names are gamma-heavy at a glance.</p>
-        </div>
-      </div>
-    </div>
-  </section>
+function setStat(id, text, cls) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = text;
+  if (cls) el.className = "v " + cls;
+}
 
-  <section id="how-it-works">
-    <div class="wrap">
-      <div class="section-head">
-        <div class="kicker">Under the hood</div>
-        <h2>From raw chain to dealer wall in four steps</h2>
-        <p>No black box — every number on the dashboard traces back to a real options chain and a documented calculation.</p>
-      </div>
-      <div class="steps">
-        <div class="step">
-          <div class="num">1</div>
-          <h3>Ingest the chain</h3>
-          <p>Pull the live options chain — strikes, open interest, implied vol, greeks — for every underlying you're tracking.</p>
-        </div>
-        <div class="step">
-          <div class="num">2</div>
-          <h3>Compute exposure</h3>
-          <p>Recompute gamma and delta per contract, sign them by the standard dealer-short convention, and weight by open interest and contract size.</p>
-        </div>
-        <div class="step">
-          <div class="num">3</div>
-          <h3>Aggregate &amp; locate</h3>
-          <p>Sum exposure by strike and by expiry, find the call wall, put wall, and the zero-gamma crossing via scenario re-pricing.</p>
-        </div>
-        <div class="step">
-          <div class="num">4</div>
-          <h3>Serve it live</h3>
-          <p>Push the recomputed positioning to your dashboard on a short refresh cycle, with history retained for context.</p>
-        </div>
-      </div>
-    </div>
-  </section>
+function renderPulse(result) {
+  // Rendered into every matching container on the page, not just one - the
+  // hero's small preview and the dedicated "Pulse" section further down
+  // both want the live near-term heatmap, and re-rendering an SVG into a
+  // second container from the same already-fetched response costs nothing
+  // extra over the network.
+  const zoomed = nearTermCells(result.by_strike_expiry, result.spot, { maxExpiries: 2, strikeWindowPct: 0.06 });
+  document.querySelectorAll(".js-pulse-heatmap").forEach((container) => {
+    renderGexHeatmap(container, zoomed, result.spot, {
+      valueFormatter: fmtMoney,
+      callWall: result.call_wall,
+      putWall: result.put_wall,
+      maxStrikeLabels: 24,
+    });
+  });
+}
 
-  <div class="disclaimer-band">
-    <div class="disclaimer-inner">
-      <span class="tag">Important</span>
-      <p><strong>Quantro shows positioning data only.</strong> Dealer walls, GEX/DEX, and the zero-gamma level describe options market structure as it exists right now — they are not buy/sell signals, price targets, or investment advice.</p>
-      <p>The dealer-short hedging convention is a standard industry assumption, not a verified fact about any specific market maker's book. Always do your own research. <a href="/legal/" style="color: var(--amber);">Read the full disclaimer →</a></p>
-    </div>
-  </div>
+function renderTerrain(result) {
+  document.querySelectorAll(".js-terrain-heatmap").forEach((container) => {
+    renderGexHeatmap(container, result.by_strike_expiry, result.spot, {
+      valueFormatter: fmtMoney,
+      callWall: result.call_wall,
+      putWall: result.put_wall,
+      maxStrikeLabels: 18,
+    });
+  });
+}
 
-  <section id="pricing">
-    <div class="wrap">
-      <div class="section-head">
-        <div class="kicker">Pricing</div>
-        <h2>Start free, upgrade when you need real time</h2>
-        <p>Every tier gets the full calc engine and chart set — the difference is data latency and how much of the universe you can track. <a href="/pricing/" style="color: var(--accent); text-decoration: none;">See full plan comparison →</a></p>
-      </div>
-      <div class="pricing-grid">
-        <div class="price-card">
-          <h3>Delayed</h3>
-          <div class="price">Free</div>
-          <div class="desc">Explore the dashboard on delayed positioning data.</div>
-          <ul>
-            <li>15-minute delayed chain data</li>
-            <li>Up to 3 underlyings</li>
-            <li>Dealer walls &amp; zero gamma</li>
-            <li>Candlestick chart with wall overlays</li>
-          </ul>
-          <a class="btn btn-ghost" href="/app">Open dashboard</a>
-        </div>
-        <div class="price-card featured">
-          <h3>Live</h3>
-          <div class="price">$49<span>/mo</span></div>
-          <div class="desc">Real-time positioning across your full watchlist.</div>
-          <ul>
-            <li>Real-time chain data</li>
-            <li>Full underlying universe (index + equities)</li>
-            <li>Full history &amp; candlestick charts</li>
-            <li>Priority refresh cadence</li>
-          </ul>
-          <a class="btn btn-primary" href="/app">Open dashboard</a>
-        </div>
-        <div class="price-card">
-          <h3>Desk</h3>
-          <div class="price">Custom</div>
-          <div class="desc">For teams that want this wired into their own tools.</div>
-          <ul>
-            <li>Everything in Live</li>
-            <li>API access to raw positioning data</li>
-            <li>Multi-user access</li>
-            <li>Custom underlying universe</li>
-          </ul>
-          <a class="btn btn-ghost" href="#">Contact us</a>
-        </div>
-      </div>
-    </div>
-  </section>
+function renderChart(result, candles) {
+  // Same reuse pattern as renderPulse/renderTerrain above: the marketing
+  // "Chart" section (Zerano's own showcase feature, matched here) reuses
+  // the exact dashboard rendering code and the same by_strike array the
+  // dot-matrix uses on /app and /app/session/ - this is a real live render
+  // of the same feature, not a separate mockup of it.
+  document.querySelectorAll(".js-chart-candles").forEach((container) => {
+    renderCandlestickWithWalls(container, candles, {
+      priceFormatter: fmtPrice,
+      strikeExposure: result ? result.by_strike : null,
+    });
+  });
+}
 
-  <section class="cta-section">
-    <div class="wrap">
-      <h2>See today's dealer walls right now</h2>
-      <p>No signup required to explore the live dashboard.</p>
-      <a class="btn btn-primary" href="/app">Open the live dashboard →</a>
-    </div>
-  </section>
+function renderHeroStats(result) {
+  setStat("hero-spot", fmtPrice(result.spot));
+  setStat("hero-netgex", fmtMoney(result.net_gex), result.net_gex >= 0 ? "pos" : "neg");
+  setStat("hero-callwall", fmtPrice(result.call_wall));
+  setStat("hero-putwall", fmtPrice(result.put_wall));
+  setStat("hero-zerogamma", fmtPrice(result.zero_gamma));
+}
 
-  <footer class="site-footer">
-    <div class="wrap">
-      <div class="footer-grid">
-        <a class="logo" href="/">Quantro<span>.</span></a>
-        <div class="footer-links">
-          <a href="#features">Features</a>
-          <a href="/methodology/">Methodology</a>
-          <a href="/pricing/">Pricing</a>
-          <a href="/faq/">FAQ</a>
-          <a href="/legal/">Legal &amp; disclaimer</a>
-          <a href="/app">Dashboard</a>
-        </div>
-      </div>
-      <div class="footer-fine">
-        Quantro provides options positioning data for informational purposes only. Nothing here is investment advice, a recommendation, or a solicitation to buy or sell any security or derivative. Options trading involves substantial risk of loss. See the <a href="/legal/" style="color: inherit;">full disclaimer</a>.
-      </div>
-    </div>
-  </footer>
+function setLiveBadges(live) {
+  document.querySelectorAll(".js-live-badge").forEach((el) => {
+    el.textContent = live ? SYMBOL + " · LIVE" : "connecting…";
+    el.classList.toggle("is-live", live);
+  });
+}
 
-  <script type="module">
-    import { renderAccountWidget } from "/auth-client.js";
-    import { initPulseWidgets } from "/pulse-widget.js";
-    renderAccountWidget(document.getElementById("account-widget"));
-    initPulseWidgets();
-  </script>
-</body>
-</html>
+function formatDayLabel(dayStr) {
+  const d = new Date(dayStr + "T00:00:00Z");
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+function setChartBadge(ok, showcaseLabel) {
+  document.querySelectorAll(".js-chart-badge").forEach((el) => {
+    if (!ok) {
+      el.textContent = "connecting…";
+      el.classList.remove("is-live");
+      return;
+    }
+    el.textContent = showcaseLabel ? `${SYMBOL} · ${formatDayLabel(showcaseLabel)}` : SYMBOL + " · LIVE";
+    el.classList.add("is-live");
+  });
+}
+
+// A marketing preview should look good whenever someone lands on it - nights,
+// weekends, or (found live 2026-09-24) the quiet pre-market stretch where a
+// plan-inferred spot barely moves at all, since there's no fresh options
+// trading yet to update it. A live rolling window can end up looking almost
+// flat depending purely on what time it's viewed. Using the most recent
+// CLOSED trading day instead - real historical data pulled from the same
+// Replay endpoints the Session screen uses, not a mockup - means this panel
+// reliably shows a full session's real movement no matter when the page
+// loads. Resolved once and cached (a closed day's candles never change);
+// falls back to the live rolling window if no closed day exists yet (a very
+// new deployment with no history).
+let showcaseCache; // undefined = not yet attempted; null = no closed day, use live; {candles, label} = resolved
+async function getShowcaseCandles() {
+  if (showcaseCache !== undefined) return showcaseCache;
+  try {
+    const daysResp = await fetch(`/api/session/${SYMBOL}/days`);
+    if (daysResp.ok) {
+      const { days } = await daysResp.json();
+      if (days && days.length) {
+        const day = days[0];
+        const candlesResp = await fetch(`/api/candles/${SYMBOL}?day=${day}&bucket_seconds=300`);
+        if (candlesResp.ok) {
+          const data = await candlesResp.json();
+          if (data.candles && data.candles.length) {
+            showcaseCache = { candles: data.candles, label: day };
+            return showcaseCache;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    // fall through to live below
+  }
+  showcaseCache = null;
+  return null;
+}
+
+async function poll() {
+  try {
+    const wantsChart = !!document.querySelector(".js-chart-candles");
+    const showcase = wantsChart ? await getShowcaseCandles() : null;
+    const [gexResp, candlesResp] = await Promise.all([
+      fetch(`/api/gex/${SYMBOL}`),
+      // Only fetch the live rolling window if this page has the chart panel
+      // AND no closed-day showcase data was available - the hero/Pulse/
+      // Terrain-only pages (methodology, faq, etc. reuse this same script)
+      // shouldn't pay for a request they don't render, and once a showcase
+      // day is cached there's no need to keep re-polling live candles for it.
+      (wantsChart && !showcase) ? fetch(`/api/candles/${SYMBOL}?bucket_seconds=60&limit=80`) : Promise.resolve(null),
+    ]);
+    if (!gexResp.ok) throw new Error(`status ${gexResp.status}`);
+    const result = await gexResp.json();
+    renderHeroStats(result);
+    renderPulse(result);
+    renderTerrain(result);
+    if (wantsChart) {
+      if (showcase) {
+        renderChart(result, showcase.candles);
+      } else {
+        const candlesData = candlesResp && candlesResp.ok ? await candlesResp.json() : { candles: [] };
+        renderChart(result, candlesData.candles);
+      }
+      setChartBadge(true, showcase ? showcase.label : null);
+    }
+    setLiveBadges(true);
+  } catch (err) {
+    // Homepage widget failing (e.g. the backend is still warming up right
+    // after a deploy) should never look like a broken page to a visitor -
+    // just keep showing "connecting..." and retry on the next tick rather
+    // than throwing or leaving stale/half-rendered charts up.
+    setLiveBadges(false);
+    setChartBadge(false, null);
+  }
+}
+
+export function initPulseWidgets() {
+  if (
+    !document.querySelector(".js-pulse-heatmap") &&
+    !document.querySelector(".js-terrain-heatmap") &&
+    !document.querySelector(".js-chart-candles")
+  ) return;
+  poll();
+  setInterval(poll, POLL_MS);
+}
