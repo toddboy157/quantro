@@ -348,11 +348,27 @@ class PolygonOptionsProvider(OptionsDataProvider):
             spot = _infer_spot_via_parity(parity_pairs)
 
         if spot is None:
+            # Round 10 addition: this error used to say only "couldn't do it,
+            # try one of these two generic things" - which was a dead end the
+            # one time it actually fired live (SPX, 2026-09-24), since there
+            # was no way to tell WHY parity failed without digging through
+            # Railway's log viewer for a full get_chain() run. This plan
+            # never gives us underlying_asset.price at all (see the file's
+            # top-of-file note - confirmed for SPY too), so parity failing
+            # here doesn't distinguish "no contracts had a close price" from
+            # "contracts had close prices but never both sides of a pair" -
+            # these numbers do, and they show up directly in /api/health's
+            # existing "errors" field, no log-digging needed.
+            matched_pairs = sum(1 for sides in parity_pairs.values() if "call" in sides and "put" in sides)
             raise RuntimeError(
                 f"Could not determine spot price for {ticker}: no underlying_asset "
                 "price/value on this plan, and no matched call/put pair with close "
                 "prices to infer it via put-call parity. Check the ticker format "
-                "(index tickers may need an 'I:' prefix) or add a Stocks-plan key."
+                "(index tickers may need an 'I:' prefix) or add a Stocks-plan key. "
+                f"[diagnostic: {len(contracts)} usable contracts collected across {page_count} "
+                f"page(s); {len(parity_pairs)} distinct strike/expiry keys had at least one side "
+                f"with a close price; {matched_pairs} of those had BOTH a call and a put close "
+                f"price; probe_spot={probe_spot!r}]"
             )
 
         return ChainSnapshot(
