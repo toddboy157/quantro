@@ -278,6 +278,70 @@ section { padding: 84px 0; border-bottom: 1px solid var(--panel-border); }
 .feature-card h3 { font-size: 16px; margin: 0 0 8px; }
 .feature-card p { font-size: 14px; color: var(--text-dim); margin: 0; }
 
+/* chart showcase (session-screen) - Zerano-style two column: numbered
+   feature list on the left, one big live chart on the right */
+
+.chart-showcase-grid {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 56px;
+  align-items: start;
+}
+
+.chart-showcase-copy .kicker {
+  display: inline-block;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.8px; text-transform: uppercase;
+  color: var(--text-dim);
+  background: var(--panel); border: 1px solid var(--panel-border);
+  padding: 5px 12px; border-radius: 100px;
+  margin-bottom: 20px;
+}
+.chart-showcase-copy h2 {
+  font-size: clamp(32px, 4.6vw, 46px);
+  margin: 0 0 16px;
+  letter-spacing: -0.5px;
+}
+.chart-showcase-copy > p {
+  color: var(--text-dim);
+  font-size: 15px;
+  margin: 0 0 32px;
+  max-width: 32ch;
+}
+
+.chart-numbered-list { list-style: none; margin: 0 0 32px; padding: 0; }
+.chart-numbered-list li {
+  display: flex; gap: 16px;
+  padding: 18px 0;
+  border-top: 1px solid var(--panel-border);
+}
+.chart-numbered-list li:last-child { border-bottom: 1px solid var(--panel-border); }
+.chart-numbered-list .num-label {
+  flex: none; width: 22px; padding-top: 2px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.5px;
+  color: var(--text-dim);
+}
+.chart-numbered-list h3 { font-size: 15px; margin: 0 0 5px; }
+.chart-numbered-list p { font-size: 13.5px; color: var(--text-dim); margin: 0; }
+
+.chart-showcase-panel {
+  background: var(--bg-alt);
+  border: 1px solid var(--panel-border);
+  border-radius: 14px;
+  padding: 20px;
+}
+.chart-showcase-top {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: 13px; color: var(--text-dim);
+  margin-bottom: 16px;
+}
+.chart-box-showcase { height: 480px; }
+
+@media (max-width: 900px) {
+  .chart-showcase-grid { grid-template-columns: 1fr; gap: 32px; }
+  .chart-showcase-copy > p { max-width: none; }
+  .chart-box-showcase { height: 360px; }
+}
+
 /* how it works */
 
 .steps {
