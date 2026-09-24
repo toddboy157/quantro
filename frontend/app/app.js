@@ -24,6 +24,7 @@ const els = {
   chartHistory: document.getElementById("chart-history"),
   dataBadge: document.getElementById("data-badge"),
   footerNote: document.getElementById("footer-note"),
+  dashChartBadge: document.getElementById("dash-chart-badge"),
 };
 
 let missedTicks = 0;
@@ -181,6 +182,26 @@ function setStatus(ok) {
       els.statusDot.className = "dot stale";
       els.statusText.textContent = "no data";
     }
+  }
+  setChartBadge(ok);
+}
+
+// Mirrors the marketing homepage's chart badge (frontend/landing/pulse-widget.js)
+// so the real dashboard's flagship chart panel reads the same way - unlike the
+// homepage's version, this one always shows the genuinely live symbol (this
+// is the real trading tool, not a marketing preview that falls back to a
+// prior closed day), so it's always accurate to say "LIVE" here whenever the
+// poll loop is actually succeeding.
+function setChartBadge(ok) {
+  if (!els.dashChartBadge) return;
+  if (!ok && missedTicks < 3) return; // don't flicker to "connecting..." on a single missed tick
+  const symbol = els.select ? els.select.value : "";
+  if (ok) {
+    els.dashChartBadge.textContent = symbol ? `${symbol} · LIVE` : "LIVE";
+    els.dashChartBadge.classList.add("is-live");
+  } else {
+    els.dashChartBadge.textContent = "connecting…";
+    els.dashChartBadge.classList.remove("is-live");
   }
 }
 
