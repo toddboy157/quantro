@@ -131,15 +131,28 @@ export function renderCandlestickWithWalls(container, candles, {
     if (callWall !== null && putWall !== null && zeroGamma !== null) break;
   }
 
-  const allValues = [];
-  candles.forEach((c) => { allValues.push(c.high, c.low); });
-  [callWall, putWall, zeroGamma].forEach((v) => { if (v != null) allValues.push(v); });
-  let vMin = Math.min(...allValues), vMax = Math.max(...allValues);
+  // The vertical scale is driven by the candles' own price action only -
+  // NOT the wall/zero-gamma levels. Found live (2026-09-24): a wall level
+  // sitting far from where price has actually been trading (real SPY
+  // traded in a ~$2-3 band that morning while its call wall and put wall
+  // sat $15-20 away on either side) used to stretch the whole chart to fit
+  // it, squashing the real candle range down to a barely-visible sliver
+  // between two dominant dot-matrix bands - reported by Todd as "no
+  // candles visible at all" on the new homepage Chart section, but this
+  // was always true of every page using this function, just easy to miss
+  // when price happened to be moving more. Now the chart auto-scales to
+  // recent price movement like a real terminal, and an off-scale wall
+  // clips to the chart's edge with an arrow instead (see isOffscreen below).
+  const priceValues = [];
+  candles.forEach((c) => { priceValues.push(c.high, c.low); });
+  let vMin = Math.min(...priceValues), vMax = Math.max(...priceValues);
   if (vMin === vMax) { vMin -= 1; vMax += 1; }
-  const pad = (vMax - vMin) * 0.08;
+  const pad = (vMax - vMin) * 0.12;
   vMin -= pad; vMax += pad;
 
   const scaleY = (v) => padT + innerH - ((v - vMin) / (vMax - vMin)) * innerH;
+  const isOffscreen = (v) => v < vMin || v > vMax;
+  const clampedY = (v) => Math.max(padT, Math.min(padT + innerH, scaleY(v)));
   const slot = innerW / n;
   const bodyW = Math.max(2, slot * 0.6);
 
@@ -215,16 +228,35 @@ export function renderCandlestickWithWalls(container, candles, {
     { value: putWall, color: "#ef4a5f", label: "Put wall", drawLine: strikeExposure == null },
     { value: zeroGamma, color: "#7c8cff", label: "Zero Γ", drawLine: true },
   ];
+  // Off-screen overlays (see isOffscreen above) all clamp to the same top or
+  // bottom edge, which - with more than one level off in the same direction,
+  // e.g. the call wall AND zero-gamma both sitting well above a quiet
+  // morning's price range - used to draw their labels directly on top of
+  // each other into unreadable garbled text. Stack same-direction labels
+  // instead, closest-to-range first, one row apart.
+  const LABEL_STEP = 12;
+  let aboveCount = 0, belowCount = 0;
   overlays.forEach(({ value, color, label, drawLine }) => {
     if (value == null) return;
-    const y = scaleY(value);
+    const offscreen = isOffscreen(value);
+    let y = clampedY(value);
+    if (offscreen) {
+      if (value > vMax) { y = padT + aboveCount * LABEL_STEP; aboveCount += 1; }
+      else { y = padT + innerH - belowCount * LABEL_STEP; belowCount += 1; }
+    }
     if (drawLine) {
       svg.appendChild(svgEl("line", {
         x1: padL, x2: width - padR, y1: y, y2: y, stroke: color, "stroke-width": 1.4, "stroke-dasharray": "6 4",
       }));
     }
+    // Arrow goes BEFORE the label, not after: this text sits right at the
+    // chart's right edge with little room to spare, and the arrow is the
+    // one piece that actually needs to survive if anything gets clipped -
+    // putting it first (rather than tacked on the end, past the longest
+    // part of the label) means it isn't the part that goes missing.
+    const arrow = offscreen ? (value > vMax ? "▲ " : "▼ ") : "";
     const tag = svgEl("text", { x: width - padR + 8, y: y + 4, fill: color, "font-size": 10, "text-anchor": "start" });
-    tag.textContent = `${label} ${priceFormatter(value)}`;
+    tag.textContent = `${arrow}${label} ${priceFormatter(value)}`;
     svg.appendChild(tag);
   });
 
