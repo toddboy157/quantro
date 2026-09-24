@@ -104,15 +104,72 @@ function setLiveBadges(live) {
   });
 }
 
+function formatDayLabel(dayStr) {
+  const d = new Date(dayStr + "T00:00:00Z");
+  return d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" });
+}
+
+function setChartBadge(ok, showcaseLabel) {
+  document.querySelectorAll(".js-chart-badge").forEach((el) => {
+    if (!ok) {
+      el.textContent = "connecting…";
+      el.classList.remove("is-live");
+      return;
+    }
+    el.textContent = showcaseLabel ? `${SYMBOL} · ${formatDayLabel(showcaseLabel)}` : SYMBOL + " · LIVE";
+    el.classList.add("is-live");
+  });
+}
+
+// A marketing preview should look good whenever someone lands on it - nights,
+// weekends, or (found live 2026-09-24) the quiet pre-market stretch where a
+// plan-inferred spot barely moves at all, since there's no fresh options
+// trading yet to update it. A live rolling window can end up looking almost
+// flat depending purely on what time it's viewed. Using the most recent
+// CLOSED trading day instead - real historical data pulled from the same
+// Replay endpoints the Session screen uses, not a mockup - means this panel
+// reliably shows a full session's real movement no matter when the page
+// loads. Resolved once and cached (a closed day's candles never change);
+// falls back to the live rolling window if no closed day exists yet (a very
+// new deployment with no history).
+let showcaseCache; // undefined = not yet attempted; null = no closed day, use live; {candles, label} = resolved
+async function getShowcaseCandles() {
+  if (showcaseCache !== undefined) return showcaseCache;
+  try {
+    const daysResp = await fetch(`/api/session/${SYMBOL}/days`);
+    if (daysResp.ok) {
+      const { days } = await daysResp.json();
+      if (days && days.length) {
+        const day = days[0];
+        const candlesResp = await fetch(`/api/candles/${SYMBOL}?day=${day}&bucket_seconds=300`);
+        if (candlesResp.ok) {
+          const data = await candlesResp.json();
+          if (data.candles && data.candles.length) {
+            showcaseCache = { candles: data.candles, label: day };
+            return showcaseCache;
+          }
+        }
+      }
+    }
+  } catch (err) {
+    // fall through to live below
+  }
+  showcaseCache = null;
+  return null;
+}
+
 async function poll() {
   try {
     const wantsChart = !!document.querySelector(".js-chart-candles");
+    const showcase = wantsChart ? await getShowcaseCandles() : null;
     const [gexResp, candlesResp] = await Promise.all([
       fetch(`/api/gex/${SYMBOL}`),
-      // Only bother fetching candles if this page actually has the chart
-      // panel - the hero/Pulse/Terrain-only pages (methodology, faq, etc.
-      // reuse this same script) shouldn't pay for a request they don't render.
-      wantsChart ? fetch(`/api/candles/${SYMBOL}?bucket_seconds=60&limit=80`) : Promise.resolve(null),
+      // Only fetch the live rolling window if this page has the chart panel
+      // AND no closed-day showcase data was available - the hero/Pulse/
+      // Terrain-only pages (methodology, faq, etc. reuse this same script)
+      // shouldn't pay for a request they don't render, and once a showcase
+      // day is cached there's no need to keep re-polling live candles for it.
+      (wantsChart && !showcase) ? fetch(`/api/candles/${SYMBOL}?bucket_seconds=60&limit=80`) : Promise.resolve(null),
     ]);
     if (!gexResp.ok) throw new Error(`status ${gexResp.status}`);
     const result = await gexResp.json();
@@ -120,8 +177,13 @@ async function poll() {
     renderPulse(result);
     renderTerrain(result);
     if (wantsChart) {
-      const candlesData = candlesResp && candlesResp.ok ? await candlesResp.json() : { candles: [] };
-      renderChart(result, candlesData.candles);
+      if (showcase) {
+        renderChart(result, showcase.candles);
+      } else {
+        const candlesData = candlesResp && candlesResp.ok ? await candlesResp.json() : { candles: [] };
+        renderChart(result, candlesData.candles);
+      }
+      setChartBadge(true, showcase ? showcase.label : null);
     }
     setLiveBadges(true);
   } catch (err) {
@@ -130,6 +192,7 @@ async function poll() {
     // just keep showing "connecting..." and retry on the next tick rather
     // than throwing or leaving stale/half-rendered charts up.
     setLiveBadges(false);
+    setChartBadge(false, null);
   }
 }
 
