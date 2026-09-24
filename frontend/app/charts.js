@@ -86,16 +86,22 @@ export function renderZeroCenteredBarChart(container, labels, values, { valueFor
  * green body = close >= open, red = close < open, thin wick = high/low.
  *
  * When `strikeExposure` (a [{strike, net_gex}, ...] by-strike array - the
- * same shape as the "GEX by strike" bar chart's data) is passed, every
- * strike within the chart's current visible price range is also drawn as a
- * horizontal band of small dots spanning the full width, behind the
- * candles - directly matching zerano.club's own "Chart" feature (dealer
- * walls and key levels drawn on the candles you already read, not a
- * separate panel). Dot spacing (denser = more dots per pixel) encodes each
- * strike's |net_gex| by PERCENTILE RANK among the currently-visible strikes
- * - see renderGexHeatmap's doc comment for why rank beats a raw fraction of
- * the largest value - and the call wall / put wall strikes are drawn in
- * gold instead of purple so they read as the two standout levels.
+ * same shape as the "GEX by strike" bar chart's data) is passed, the visible
+ * price range is also drawn as a series of horizontal dealer-positioning
+ * bands spanning the full width, behind the candles - directly matching
+ * zerano.club's own "Chart" feature (dealer walls and key levels drawn on
+ * the candles you already read, not a separate panel). Band spacing
+ * (denser = more dots per pixel) AND thickness (more stacked dot-rows)
+ * together encode each band's |net_gex| by PERCENTILE RANK among the
+ * currently-visible bands - see renderGexHeatmap's doc comment for why rank
+ * beats a raw fraction of the largest value - and the call wall / put wall
+ * strikes are drawn in gold instead of purple so they read as the two
+ * standout levels. Adjacent strikes are bucketed into a fixed number of
+ * bands first (same fix as _bucketCellsByStrike below, applied here too:
+ * SPY's real $1-wide strikes near the money produced dozens of faint,
+ * single-pixel-thin rows rather than the few bold, clearly-thick bands
+ * Zerano's own chart shows - found comparing directly against Todd's
+ * screenshot of the live homepage next to a zerano.club reference).
  */
 export function renderCandlestickWithWalls(container, candles, {
   priceFormatter = (v) => v.toFixed(2),
@@ -168,11 +174,34 @@ export function renderCandlestickWithWalls(container, candles, {
 
   // Dealer positioning dot-matrix, drawn behind the candles so the candle
   // bodies read on top of it rather than the other way around - see the
-  // function doc above for what drives each row's density and color.
+  // function doc above for what drives each band's density, thickness, and
+  // color.
   if (strikeExposure && strikeExposure.length) {
     const visibleRows = strikeExposure.filter((r) => r.net_gex !== 0 && r.strike >= vMin && r.strike <= vMax);
     if (visibleRows.length) {
-      const sortedAbs = visibleRows.map((r) => Math.abs(r.net_gex)).sort((a, b) => a - b);
+      // Bucket strikes into a fixed number of pixel-height bands first (same
+      // idea as _bucketCellsByStrike below) - one dot-row per real $1 strike
+      // produced dozens of near-invisible thin lines instead of a handful of
+      // bold bands. ~16px per band keeps bands clearly separated even on a
+      // short chart while still leaving room for several distinct levels.
+      const MAX_BANDS = Math.max(6, Math.floor(innerH / 16));
+      const bandPx = innerH / MAX_BANDS;
+      const bands = new Map(); // bandIndex -> { sum, y, isWall }
+      visibleRows.forEach((r) => {
+        const y = scaleY(r.strike);
+        const idx = Math.round((y - padT) / bandPx);
+        const isWall = (callWall != null && r.strike === callWall) || (putWall != null && r.strike === putWall);
+        const b = bands.get(idx);
+        if (b) {
+          b.sum += r.net_gex;
+          b.y = (b.y + y) / 2;
+          b.isWall = b.isWall || isWall;
+        } else {
+          bands.set(idx, { sum: r.net_gex, y, isWall });
+        }
+      });
+      const bandList = [...bands.values()];
+      const sortedAbs = bandList.map((b) => Math.abs(b.sum)).sort((a, b) => a - b);
       const rn = sortedAbs.length;
       function rankOf(v) {
         if (rn <= 1) return 1;
@@ -184,17 +213,33 @@ export function renderCandlestickWithWalls(container, candles, {
         return lo / (rn - 1);
       }
       const dotLayer = svgEl("g", {});
-      visibleRows.forEach((r) => {
-        const y = scaleY(r.strike);
-        const isWall = (callWall != null && r.strike === callWall) || (putWall != null && r.strike === putWall);
-        const rank = rankOf(Math.abs(r.net_gex));
-        const gap = 18 - rank * 12; // 18px = sparse/low-magnitude row, 6px = dense/high-magnitude row
-        const dotR = isWall ? 1.7 : 1.2;
-        const color = isWall ? "#f0c24d" : "#8a6cf5";
-        const opacity = (isWall ? 0.85 : 0.22 + rank * 0.55).toFixed(2);
-        for (let x = padL + gap / 2; x < width - padR; x += gap) {
-          dotLayer.appendChild(svgEl("circle", { cx: x, cy: y, r: dotR, fill: color, opacity }));
-        }
+      bandList.forEach((b) => {
+        const rank = rankOf(Math.abs(b.sum));
+        // A real chain has dozens of strikes with genuinely negligible
+        // exposure next to the handful that matter - drawing a faint row for
+        // every single one (the previous version) buried the real signal in
+        // background noise instead of letting it stand out against empty
+        // space, which is what makes Zerano's own chart read as a handful of
+        // bold bands rather than a wash covering the whole chart. Skip the
+        // bottom third of the rank distribution entirely unless it's a wall.
+        if (!b.isWall && rank < 0.34) return;
+        const gap = 14 - rank * 9; // 14px = sparse band, 5px = dense band
+        const dotR = b.isWall ? 2.2 : 1.3 + rank * 0.8;
+        const color = b.isWall ? "#f0c24d" : "#b967ff";
+        const opacity = (b.isWall ? 0.9 : 0.35 + rank * 0.55).toFixed(2);
+        // Give a high-magnitude band real vertical thickness (multiple
+        // stacked, staggered dot-rows) rather than one pixel-thin line of
+        // dots - this is what makes it read as a solid, weighty band like
+        // Zerano's own chart, not just a faint dashed row. Reserve the
+        // thickest treatment for the top of the distribution so thickness
+        // still reads as a meaningful signal rather than being the default.
+        const rowOffsets = b.isWall ? [-1.3, 1.3] : rank > 0.8 ? [-2.6, 0, 2.6] : rank > 0.55 ? [-1.4, 1.4] : [0];
+        rowOffsets.forEach((dy, ri) => {
+          const stagger = (ri % 2) * (gap / 2);
+          for (let x = padL + gap / 2 + stagger; x < width - padR; x += gap) {
+            dotLayer.appendChild(svgEl("circle", { cx: x, cy: b.y + dy, r: dotR, fill: color, opacity }));
+          }
+        });
       });
       svg.appendChild(dotLayer);
     }
